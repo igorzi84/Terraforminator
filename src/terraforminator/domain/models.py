@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 ChangeAction = Literal["create", "update", "delete", "no-op", "read"]
+Severity = Literal["low", "medium", "high"]
+
 
 @dataclass(frozen=True)
 class ResourceChange:
@@ -12,3 +14,11 @@ class ResourceChange:
     before: dict[str, Any] | None
     after: dict[str, Any] | None
 
+
+@dataclass(frozen=True)
+class Finding:
+    id: str
+    severity: Severity
+    resource_address: str
+    evidence: str
+    remediation: str
