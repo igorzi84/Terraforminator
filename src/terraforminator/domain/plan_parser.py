@@ -1,0 +1,17 @@
+from terraforminator.domain.models import ResourceChange
+
+
+def parse_plan(plan: dict) -> list[ResourceChange]:
+    changes = []
+    for resource_change in plan["resource_changes"]:
+        change = resource_change["change"]
+        normalized_change = ResourceChange(
+            address=resource_change["address"],
+            resource_type=resource_change["type"],
+            name=resource_change["name"],
+            actions=tuple(change["actions"]),
+            before=change["before"],
+            after=change["after"],
+        )
+        changes.append(normalized_change)
+    return changes
