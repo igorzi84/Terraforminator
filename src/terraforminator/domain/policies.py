@@ -8,6 +8,7 @@ def evaluate_policies(changes: list[ResourceChange]) -> list[Finding]:
     for change in changes:
         findings.extend(check_public_inbound_access(change))
         findings.extend(check_iam_wildcard_permissions(change))
+        findings.extend(check_destructive_stateful_changes(change))
     return findings
 
 
@@ -21,9 +22,9 @@ def check_public_inbound_access(change: ResourceChange) -> list[Finding]:
 
     if change.after is None:
         return []
- 
+
     for rule in change.after.get("ingress", []):
-        if "0.0.0.0/0" in rule.get("cidr_blocks",[]):
+        if "0.0.0.0/0" in rule.get("cidr_blocks", []):
             finding = Finding(
                 id="public-inbound-access",
                 severity="high",
@@ -33,6 +34,7 @@ def check_public_inbound_access(change: ResourceChange) -> list[Finding]:
             )
             findings.append(finding)
     return findings
+
 
 def check_iam_wildcard_permissions(change: ResourceChange) -> list[Finding]:
     findings = []
@@ -44,10 +46,12 @@ def check_iam_wildcard_permissions(change: ResourceChange) -> list[Finding]:
 
     if change.after is None:
         return []
- 
+
     policy = json.loads(change.after["policy"])
     for statement in policy["Statement"]:
-        if statement["Effect"] == "Allow" and (statement["Action"] == "*" or statement["Resource"] == "*"):
+        if statement["Effect"] == "Allow" and (
+            statement["Action"] == "*" or statement["Resource"] == "*"
+        ):
             finding = Finding(
                 id="iam-wildcard-permission",
                 severity="high",
@@ -57,3 +61,21 @@ def check_iam_wildcard_permissions(change: ResourceChange) -> list[Finding]:
             )
             findings.append(finding)
     return findings
+
+
+def check_destructive_stateful_changes(change: ResourceChange) -> list[Finding]:
+    if change.resource_type != "docker_volume":
+        return []
+
+    if "delete" not in change.actions:
+        return []
+
+    return [
+        Finding(
+            id="destructive-stateful-change",
+            severity="high",
+            resource_address=change.address,
+            evidence=f"actions contains delete for {change.resource_type}",
+            remediation="Backup data and explicitly approve.",
+        )
+    ]

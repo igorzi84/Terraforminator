@@ -162,3 +162,39 @@ def test_evaluate_policies_iam_wildcard_deny():
         },
     )
     assert evaluate_policies([change]) == []
+
+
+@pytest.mark.parametrize(
+    "action, after",
+    [(("delete",), None), (("delete", "create"), {"name": "app-data-replacement"})],
+)
+def test_evaluate_policies_destructive_stateful_changes(action, after):
+    change = ResourceChange(
+        address="docker_volume.app_data",
+        resource_type="docker_volume",
+        name="app_data",
+        actions=action,
+        before={"name": "app-data"},
+        after=after,
+    )
+    findings = evaluate_policies([change])
+    assert len(findings) == 1
+
+    finding = findings[0]
+    assert finding.id == "destructive-stateful-change"
+    assert finding.severity == "high"
+    assert finding.resource_address == "docker_volume.app_data"
+    assert finding.evidence == "actions contains delete for docker_volume"
+    assert finding.remediation == "Backup data and explicitly approve."
+
+
+def test_evaluate_policies_destructive_stateful_changes_noop():
+    change = ResourceChange(
+        address="docker_volume.app_data",
+        resource_type="docker_volume",
+        name="app_data",
+        actions=("no-op",),
+        before={"name": "app-data"},
+        after=None,
+    )
+    assert evaluate_policies([change]) == []
