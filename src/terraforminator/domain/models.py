@@ -13,6 +13,7 @@ class ResourceChange:
     actions: tuple[ChangeAction, ...]
     before: dict[str, Any] | None
     after: dict[str, Any] | None
+    after_unknown: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

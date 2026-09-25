@@ -198,3 +198,60 @@ def test_evaluate_policies_destructive_stateful_changes_noop():
         after=None,
     )
     assert evaluate_policies([change]) == []
+
+
+@pytest.mark.parametrize("action", [(("create",)), (("update"),)])
+def test_evaluate_policies_missing_storage_encryption(action):
+    change = ResourceChange(
+        address="aws_ebs_volume.app_data",
+        resource_type="aws_ebs_volume",
+        name="app_data",
+        actions=action,
+        before={},
+        after={"encrypted": False},
+    )
+
+    findings = evaluate_policies([change])
+    assert len(findings) == 1
+
+    finding = findings[0]
+    assert finding.id == "missing-storage-encryption"
+    assert finding.severity == "high"
+    assert finding.resource_address == "aws_ebs_volume.app_data"
+    assert finding.evidence == "after.encrypted is false"
+    assert finding.remediation == "Enable encryption for the storage resource."
+
+
+def test_evaluate_policies_not_missing_storage_encryption():
+    change = ResourceChange(
+        address="aws_ebs_volume.app_data",
+        resource_type="aws_ebs_volume",
+        name="app_data",
+        actions=("create",),
+        before={},
+        after={"encrypted": True},
+    )
+
+    assert evaluate_policies([change]) == []
+
+
+def test_evaluate_policies_unknown_storage_encryption():
+    change = ResourceChange(
+        address="aws_ebs_volume.app_data",
+        resource_type="aws_ebs_volume",
+        name="app_data",
+        actions=("create",),
+        before={},
+        after={},
+        after_unknown={"encrypted": True}
+    )
+
+    findings = evaluate_policies([change])
+    assert len(findings) == 1
+
+    finding = findings[0]
+    assert finding.id == "storage-encryption-unknown"
+    assert finding.severity == "medium"
+    assert finding.resource_address == "aws_ebs_volume.app_data"
+    assert finding.evidence == "after.encrypted is unknown"
+    assert finding.remediation == "Resolve the encryption value before approving the change."

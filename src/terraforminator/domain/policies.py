@@ -9,6 +9,7 @@ def evaluate_policies(changes: list[ResourceChange]) -> list[Finding]:
         findings.extend(check_public_inbound_access(change))
         findings.extend(check_iam_wildcard_permissions(change))
         findings.extend(check_destructive_stateful_changes(change))
+        findings.extend(check_missing_storage_encryption(change))
     return findings
 
 
@@ -79,3 +80,40 @@ def check_destructive_stateful_changes(change: ResourceChange) -> list[Finding]:
             remediation="Backup data and explicitly approve.",
         )
     ]
+
+
+def check_missing_storage_encryption(change: ResourceChange) -> list[Finding]:
+    if change.resource_type != "aws_ebs_volume":
+        return []
+
+    if not {"create", "update"}.intersection(change.actions):
+        return []
+
+    if change.after is None:
+        return []
+
+    encrypted = change.after.get("encrypted")
+
+    if encrypted is False:
+        return [
+            Finding(
+                id="missing-storage-encryption",
+                severity="high",
+                resource_address=change.address,
+                evidence="after.encrypted is false",
+                remediation="Enable encryption for the storage resource.",
+            )
+        ]
+
+    if (change.after_unknown or {}).get("encrypted") is True:
+        return [
+            Finding(
+                id="storage-encryption-unknown",
+                severity="medium",
+                resource_address=change.address,
+                evidence="after.encrypted is unknown",
+                remediation="Resolve the encryption value before approving the change.",
+            )
+        ]
+
+    return []
