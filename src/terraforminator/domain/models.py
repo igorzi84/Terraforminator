@@ -23,3 +23,13 @@ class Finding:
     resource_address: str
     evidence: str
     remediation: str
+
+
+@dataclass(frozen=True)
+class PolicyConfig:
+    enabled_policy_ids: frozenset[str] = frozenset({
+        "public-inbound-access",
+        "iam-wildcard-permission",
+        "destructive-stateful-change",
+        "storage-encryption"
+    })

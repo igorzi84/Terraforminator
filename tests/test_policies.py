@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from terraforminator.domain.models import ResourceChange
+from terraforminator.domain.models import PolicyConfig, ResourceChange
 from terraforminator.domain.policies import evaluate_policies
 
 
@@ -243,7 +243,7 @@ def test_evaluate_policies_unknown_storage_encryption():
         actions=("create",),
         before={},
         after={},
-        after_unknown={"encrypted": True}
+        after_unknown={"encrypted": True},
     )
 
     findings = evaluate_policies([change])
@@ -254,4 +254,87 @@ def test_evaluate_policies_unknown_storage_encryption():
     assert finding.severity == "medium"
     assert finding.resource_address == "aws_ebs_volume.app_data"
     assert finding.evidence == "after.encrypted is unknown"
-    assert finding.remediation == "Resolve the encryption value before approving the change."
+    assert (
+        finding.remediation
+        == "Resolve the encryption value before approving the change."
+    )
+
+
+def test_evaluate_policies_public_inbound_access_not_in_policy():
+    change = ResourceChange(
+        address="aws_security_group.web",
+        resource_type="aws_security_group",
+        name="web",
+        actions=("create",),
+        before=None,
+        after={
+            "ingress": [
+                {
+                    "cidr_blocks": ["0.0.0.0/0"],
+                    "from_port": 443,
+                    "to_port": 443,
+                    "protocol": "tcp",
+                }
+            ]
+        },
+    )
+    policy_config = PolicyConfig(enabled_policy_ids=frozenset())
+
+    assert evaluate_policies([change], policy_config) == []
+
+
+def test_evaluate_policies_public_inbound_access_only_in_policy():
+    change = ResourceChange(
+        address="aws_security_group.web",
+        resource_type="aws_security_group",
+        name="web",
+        actions=("create",),
+        before=None,
+        after={
+            "ingress": [
+                {
+                    "cidr_blocks": ["0.0.0.0/0"],
+                    "from_port": 443,
+                    "to_port": 443,
+                    "protocol": "tcp",
+                }
+            ]
+        },
+    )
+    policy_config = PolicyConfig(
+        enabled_policy_ids=frozenset({"public-inbound-access"})
+    )
+
+    findings = evaluate_policies([change], policy_config)
+    assert len(findings) == 1
+
+    finding = findings[0]
+
+    assert finding.id == "public-inbound-access"
+    assert finding.severity == "high"
+    assert finding.resource_address == "aws_security_group.web"
+    assert finding.evidence == "ingress.cidr_blocks contains 0.0.0.0/0"
+    assert finding.remediation == "Restrict ingress to approved networks."
+
+
+def test_evaluate_policies_fail_on_wrong_policy_config():
+    change = ResourceChange(
+        address="aws_security_group.web",
+        resource_type="aws_security_group",
+        name="web",
+        actions=("create",),
+        before=None,
+        after={
+            "ingress": [
+                {
+                    "cidr_blocks": ["0.0.0.0/0"],
+                    "from_port": 443,
+                    "to_port": 443,
+                    "protocol": "tcp",
+                }
+            ]
+        },
+    )
+    policy_config = PolicyConfig(enabled_policy_ids=frozenset({"public-inbound-acess"}))
+    with pytest.raises(ValueError, match="public-inbound-acess"):
+        evaluate_policies([change], policy_config)

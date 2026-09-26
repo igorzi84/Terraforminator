@@ -1,15 +1,25 @@
 import json
 
-from terraforminator.domain.models import Finding, ResourceChange
+from terraforminator.domain.models import Finding, PolicyConfig, ResourceChange
 
 
-def evaluate_policies(changes: list[ResourceChange]) -> list[Finding]:
+def evaluate_policies(
+    changes: list[ResourceChange], policy_config: PolicyConfig | None = None
+) -> list[Finding]:
+    if policy_config is None:
+        policy_config = PolicyConfig()
+
+    unknown_policy_ids = policy_config.enabled_policy_ids - POLICY_REGISTRY.keys()
+
+    if unknown_policy_ids:
+        unknown_ids = ", ".join(sorted(unknown_policy_ids))
+        raise ValueError(f"Unknown policy IDs: {unknown_ids}")
+
     findings = []
     for change in changes:
-        findings.extend(check_public_inbound_access(change))
-        findings.extend(check_iam_wildcard_permissions(change))
-        findings.extend(check_destructive_stateful_changes(change))
-        findings.extend(check_missing_storage_encryption(change))
+        for policy_id, policy_check in POLICY_REGISTRY.items():
+            if policy_id in policy_config.enabled_policy_ids:
+                findings.extend(policy_check(change))
     return findings
 
 
@@ -117,3 +127,11 @@ def check_missing_storage_encryption(change: ResourceChange) -> list[Finding]:
         ]
 
     return []
+
+
+POLICY_REGISTRY = {
+    "public-inbound-access": check_public_inbound_access,
+    "iam-wildcard-permission": check_iam_wildcard_permissions,
+    "destructive-stateful-change": check_destructive_stateful_changes,
+    "storage-encryption": check_missing_storage_encryption,
+}
