@@ -264,12 +264,13 @@ def test_evaluate_policies_unknown_storage_encryption():
     )
 
 
-def test_evaluate_policies_missing_required_tags():
+@pytest.mark.parametrize("action", ["create", "update"])
+def test_evaluate_policies_missing_required_tags(action):
     change = ResourceChange(
         address="aws_ebs_volume.app_data",
         resource_type="aws_ebs_volume",
         name="app_data",
-        actions=("create",),
+        actions=(action,),
         before={},
         after={
             "encrypted": True,
@@ -288,7 +289,95 @@ def test_evaluate_policies_missing_required_tags():
     assert findings[0].severity == "medium"
     assert findings[0].resource_address == "aws_ebs_volume.app_data"
     assert findings[0].evidence == "Missing tags: Owner"
-    assert findings[0].remediation == "Add the required tags before approving the change."
+    assert (
+        findings[0].remediation == "Add the required tags before approving the change."
+    )
+
+
+def test_evaluate_policies_not_missing_required_tags():
+    change = ResourceChange(
+        address="aws_ebs_volume.app_data",
+        resource_type="aws_ebs_volume",
+        name="app_data",
+        actions=("create",),
+        before={},
+        after={
+            "encrypted": True,
+            "tags": {"Project": "Test", "Environment": "Production", "Owner": "Test"},
+        },
+    )
+    policy_config = PolicyConfig(
+        enabled_policy_ids=frozenset({"missing-required-tags"}),
+        required_tags=frozenset({"Project", "Environment", "Owner"}),
+    )
+
+    assert evaluate_policies([change], policy_config) == []
+
+
+def test_evaluate_policies_missing_all_required_tags():
+    change = ResourceChange(
+        address="aws_ebs_volume.app_data",
+        resource_type="aws_ebs_volume",
+        name="app_data",
+        actions=("create",),
+        before={},
+        after={"encrypted": True},
+    )
+    policy_config = PolicyConfig(
+        enabled_policy_ids=frozenset({"missing-required-tags"}),
+        required_tags=frozenset({"Project", "Environment", "Owner"}),
+    )
+
+    findings = evaluate_policies([change], policy_config)
+
+    assert len(findings) == 1
+    assert findings[0].id == "missing-required-tags"
+    assert findings[0].severity == "medium"
+    assert findings[0].resource_address == "aws_ebs_volume.app_data"
+    assert findings[0].evidence == "Missing tags: Environment, Owner, Project"
+    assert (
+        findings[0].remediation == "Add the required tags before approving the change."
+    )
+
+
+def test_evaluate_policies_noop_missing_required_tags():
+    change = ResourceChange(
+        address="aws_ebs_volume.app_data",
+        resource_type="aws_ebs_volume",
+        name="app_data",
+        actions=("no-op",),
+        before={},
+        after={
+            "encrypted": True,
+            "tags": {"Project": "Test"},
+        },
+    )
+    policy_config = PolicyConfig(
+        enabled_policy_ids=frozenset({"missing-required-tags"}),
+        required_tags=frozenset({"Project", "Environment", "Owner"}),
+    )
+
+    assert evaluate_policies([change], policy_config) == []
+
+
+def test_evaluate_policies_non_ebs_missing_required_tags():
+    change = ResourceChange(
+        address="docker_container.app_data",
+        resource_type="docker_container",
+        name="app_data",
+        actions=("create",),
+        before={},
+        after={
+            "encrypted": True,
+            "tags": {"Project": "Test"},
+        },
+    )
+    policy_config = PolicyConfig(
+        enabled_policy_ids=frozenset({"missing-required-tags"}),
+        required_tags=frozenset({"Project", "Environment", "Owner"}),
+    )
+
+    assert evaluate_policies([change], policy_config) == []
 
 
 def test_evaluate_policies_public_inbound_access_not_in_policy():
