@@ -5,6 +5,10 @@ import pytest
 from terraforminator.domain.models import PolicyConfig, ResourceChange
 from terraforminator.domain.policies import evaluate_policies
 
+STORAGE_ENCRYPTION_ONLY = PolicyConfig(
+    enabled_policy_ids=frozenset({"storage-encryption"})
+)
+
 
 def test_evaluate_policies_returns_no_findings_for_no_changes():
     assert evaluate_policies([]) == []
@@ -211,7 +215,7 @@ def test_evaluate_policies_missing_storage_encryption(action):
         after={"encrypted": False},
     )
 
-    findings = evaluate_policies([change])
+    findings = evaluate_policies([change], STORAGE_ENCRYPTION_ONLY)
     assert len(findings) == 1
 
     finding = findings[0]
@@ -232,7 +236,7 @@ def test_evaluate_policies_not_missing_storage_encryption():
         after={"encrypted": True},
     )
 
-    assert evaluate_policies([change]) == []
+    assert evaluate_policies([change], STORAGE_ENCRYPTION_ONLY) == []
 
 
 def test_evaluate_policies_unknown_storage_encryption():
@@ -246,7 +250,7 @@ def test_evaluate_policies_unknown_storage_encryption():
         after_unknown={"encrypted": True},
     )
 
-    findings = evaluate_policies([change])
+    findings = evaluate_policies([change], STORAGE_ENCRYPTION_ONLY)
     assert len(findings) == 1
 
     finding = findings[0]
@@ -258,6 +262,33 @@ def test_evaluate_policies_unknown_storage_encryption():
         finding.remediation
         == "Resolve the encryption value before approving the change."
     )
+
+
+def test_evaluate_policies_missing_required_tags():
+    change = ResourceChange(
+        address="aws_ebs_volume.app_data",
+        resource_type="aws_ebs_volume",
+        name="app_data",
+        actions=("create",),
+        before={},
+        after={
+            "encrypted": True,
+            "tags": {"Project": "Test", "Environment": "Production"},
+        },
+    )
+    policy_config = PolicyConfig(
+        enabled_policy_ids=frozenset({"missing-required-tags"}),
+        required_tags=frozenset({"Project", "Environment", "Owner"}),
+    )
+
+    findings = evaluate_policies([change], policy_config)
+
+    assert len(findings) == 1
+    assert findings[0].id == "missing-required-tags"
+    assert findings[0].severity == "medium"
+    assert findings[0].resource_address == "aws_ebs_volume.app_data"
+    assert findings[0].evidence == "Missing tags: Owner"
+    assert findings[0].remediation == "Add the required tags before approving the change."
 
 
 def test_evaluate_policies_public_inbound_access_not_in_policy():

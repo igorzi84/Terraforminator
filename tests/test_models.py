@@ -34,3 +34,8 @@ def test_policy_config_subset():
 
     assert "public-inbound-access" in policy_config.enabled_policy_ids
     assert "iam-wildcard-permission" not in policy_config.enabled_policy_ids
+
+
+def test_policy_config_required_tags():
+    policy_config = PolicyConfig()
+    assert policy_config.required_tags == frozenset({"Project", "Environment", "Owner"})

@@ -1,0 +1,2 @@
+enabled_policy_ids = ["public-inbound-access"]
+required_tags = "Project"

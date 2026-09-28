@@ -24,10 +24,11 @@ def test_load_multiple_policies():
     assert policy_config.enabled_policy_ids == frozenset(
         {"public-inbound-access", "iam-wildcard-permission"}
     )
+    assert policy_config.required_tags == frozenset({"Project", "Environment", "Owner"})
 
 
 def test_empty_config_error():
-    config_path = TEST_CONFIG_DIR / "empty_config.toml"
+    config_path = TEST_CONFIG_DIR / "empty-config.toml"
     with pytest.raises(ValueError, match="enabled_policy_ids is required"):
         load_policy_config(config_path)
 
@@ -49,3 +50,18 @@ def test_real_config_load():
     policy_config = load_policy_config(config_path)
     assert isinstance(policy_config, PolicyConfig)
     assert evaluate_policies([], policy_config) == []
+
+
+def test_required_tags():
+    config_path = TEST_CONFIG_DIR / "public-inbound-only.toml"
+    policy_config = load_policy_config(config_path)
+    assert isinstance(policy_config, PolicyConfig)
+    assert policy_config.required_tags == frozenset(
+        {"Project", "Environment", "Owner", "Test-Tag"}
+    )
+
+
+def test_reject_str_in_tag_config():
+    config_path = TEST_CONFIG_DIR / "string-required-tags.toml"
+    with pytest.raises(TypeError, match="required_tags must be a list of strings"):
+        load_policy_config(config_path)

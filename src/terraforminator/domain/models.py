@@ -27,9 +27,13 @@ class Finding:
 
 @dataclass(frozen=True)
 class PolicyConfig:
-    enabled_policy_ids: frozenset[str] = frozenset({
-        "public-inbound-access",
-        "iam-wildcard-permission",
-        "destructive-stateful-change",
-        "storage-encryption"
-    })
+    enabled_policy_ids: frozenset[str] = frozenset(
+        {
+            "public-inbound-access",
+            "iam-wildcard-permission",
+            "destructive-stateful-change",
+            "storage-encryption",
+            "missing-required-tags"
+        }
+    )
+    required_tags: frozenset[str] = frozenset({"Project", "Environment", "Owner"})

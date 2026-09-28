@@ -19,11 +19,13 @@ def evaluate_policies(
     for change in changes:
         for policy_id, policy_check in POLICY_REGISTRY.items():
             if policy_id in policy_config.enabled_policy_ids:
-                findings.extend(policy_check(change))
+                findings.extend(policy_check(change, policy_config))
     return findings
 
 
-def check_public_inbound_access(change: ResourceChange) -> list[Finding]:
+def check_public_inbound_access(
+    change: ResourceChange, policy_config: PolicyConfig
+) -> list[Finding]:
     findings = []
     if change.resource_type != "aws_security_group":
         return []
@@ -47,7 +49,9 @@ def check_public_inbound_access(change: ResourceChange) -> list[Finding]:
     return findings
 
 
-def check_iam_wildcard_permissions(change: ResourceChange) -> list[Finding]:
+def check_iam_wildcard_permissions(
+    change: ResourceChange, policy_config: PolicyConfig
+) -> list[Finding]:
     findings = []
     if change.resource_type != "aws_iam_policy":
         return []
@@ -74,7 +78,9 @@ def check_iam_wildcard_permissions(change: ResourceChange) -> list[Finding]:
     return findings
 
 
-def check_destructive_stateful_changes(change: ResourceChange) -> list[Finding]:
+def check_destructive_stateful_changes(
+    change: ResourceChange, policy_config: PolicyConfig
+) -> list[Finding]:
     if change.resource_type != "docker_volume":
         return []
 
@@ -92,7 +98,9 @@ def check_destructive_stateful_changes(change: ResourceChange) -> list[Finding]:
     ]
 
 
-def check_missing_storage_encryption(change: ResourceChange) -> list[Finding]:
+def check_missing_storage_encryption(
+    change: ResourceChange, policy_config: PolicyConfig
+) -> list[Finding]:
     if change.resource_type != "aws_ebs_volume":
         return []
 
@@ -129,9 +137,41 @@ def check_missing_storage_encryption(change: ResourceChange) -> list[Finding]:
     return []
 
 
+def check_missing_required_tags(
+    change: ResourceChange, policy_config: PolicyConfig
+) -> list[Finding]:
+    if change.resource_type != "aws_ebs_volume":
+        return []
+
+    if not {"create", "update"}.intersection(change.actions):
+        return []
+
+    if change.after is None:
+        return []
+
+    tags = change.after.get("tags")
+    if not isinstance(tags, dict):
+        tags = {}
+
+    missing_tags = sorted(policy_config.required_tags - tags.keys())
+    if not missing_tags:
+        return []
+
+    return [
+        Finding(
+            id="missing-required-tags",
+            severity="medium",
+            resource_address=change.address,
+            evidence=f"Missing tags: {', '.join(missing_tags)}",
+            remediation="Add the required tags before approving the change.",
+        )
+    ]
+
+
 POLICY_REGISTRY = {
     "public-inbound-access": check_public_inbound_access,
     "iam-wildcard-permission": check_iam_wildcard_permissions,
     "destructive-stateful-change": check_destructive_stateful_changes,
     "storage-encryption": check_missing_storage_encryption,
+    "missing-required-tags": check_missing_required_tags,
 }

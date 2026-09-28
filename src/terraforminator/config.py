@@ -9,7 +9,7 @@ def load_policy_config(config_path: Path) -> PolicyConfig:
         config = tomllib.load(f)
         if "enabled_policy_ids" not in config:
             raise ValueError("enabled_policy_ids is required")
-        
+
         policy_ids = config["enabled_policy_ids"]
 
         if not isinstance(policy_ids, list):
@@ -20,4 +20,17 @@ def load_policy_config(config_path: Path) -> PolicyConfig:
 
         ids = frozenset(policy_ids)
 
-        return PolicyConfig(enabled_policy_ids=ids)
+        tags = PolicyConfig().required_tags
+
+        if "required_tags" in config:
+            required_tags = config["required_tags"]
+
+            if not isinstance(required_tags, list):
+                raise TypeError("required_tags must be a list of strings")
+
+            if not all(isinstance(tag, str) for tag in required_tags):
+                raise TypeError("required_tags must be a list of strings")
+
+            tags = frozenset(required_tags)
+
+        return PolicyConfig(enabled_policy_ids=ids, required_tags=tags)

@@ -1,1 +1,2 @@
 enabled_policy_ids = ["public-inbound-access"]
+required_tags = ["Project", "Environment", "Owner", "Test-Tag"]
