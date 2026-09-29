@@ -3,7 +3,7 @@ from typing import Any, Literal
 
 ChangeAction = Literal["create", "update", "delete", "no-op", "read"]
 Severity = Literal["low", "medium", "high"]
-
+ReviewDecision = Literal["approve", "needs_review", "block"]
 
 @dataclass(frozen=True)
 class ResourceChange:
