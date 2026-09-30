@@ -8,17 +8,22 @@ from terraforminator.api.v1.schemas import (
     ReviewResponse,
 )
 from terraforminator.config import load_policy_config
+from terraforminator.deterministic_explanation_provider import (
+    DeterministicExplanationProvider,
+)
 from terraforminator.domain.errors import InvalidPlanError
-from terraforminator.domain.explainer import explain_review
 from terraforminator.domain.models import PolicyConfig
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
+from terraforminator.explanation_provider import ExplanationProvider
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 POLICY_CONFIG_PATH = CONFIG_DIR / "policies.toml"
 
 
-def create_app(policy_config: PolicyConfig) -> FastAPI:
+def create_app(
+    policy_config: PolicyConfig, explanation_provider: ExplanationProvider
+) -> FastAPI:
     app = FastAPI()
 
     @app.post("/reviews")
@@ -41,7 +46,7 @@ def create_app(policy_config: PolicyConfig) -> FastAPI:
             )
             for finding in review.findings
         ]
-        explanation = explain_review(review)
+        explanation = explanation_provider.explain(review)
 
         return ReviewResponse(
             decision=review.decision, findings=findings, explanation=explanation
@@ -51,4 +56,4 @@ def create_app(policy_config: PolicyConfig) -> FastAPI:
 
 
 policy_config = load_policy_config(POLICY_CONFIG_PATH)
-app = create_app(policy_config)
+app = create_app(policy_config, DeterministicExplanationProvider())

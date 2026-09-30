@@ -1,7 +1,16 @@
 from fastapi.testclient import TestClient
 
-from terraforminator.domain.models import PolicyConfig
+from terraforminator.deterministic_explanation_provider import (
+    DeterministicExplanationProvider,
+)
+from terraforminator.domain.models import PolicyConfig, ReviewResult
 from terraforminator.main import app, create_app
+
+
+class FakeExplanationProvider:
+    def explain(self, review: ReviewResult) -> str:
+        return "Mocked explanation."
+
 
 client = TestClient(app)
 
@@ -41,7 +50,9 @@ def test_create_review_block(aws_sg_update_plan):
 def test_custom_app_approve(aws_sg_update_plan):
     """We are using custom app with empty policy config, so it shouldnt block anything"""
 
-    custom_app = create_app(PolicyConfig(enabled_policy_ids=frozenset()))
+    custom_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset()), DeterministicExplanationProvider()
+    )
     custom_client = TestClient(custom_app)
 
     response = custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
@@ -97,3 +108,25 @@ def test_parse_plan_resource_changes_change_is_dict():
             "message": "resource change change field must be an object",
         }
     }
+
+
+def test_fake_explanation_provider(aws_sg_update_plan):
+    custom_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset({"public-inbound-access"})),
+        FakeExplanationProvider(),
+    )
+    custom_client = TestClient(custom_app)
+    finding = {
+        "id": "public-inbound-access",
+        "severity": "high",
+        "resource_address": "aws_security_group.web",
+        "evidence": "ingress.cidr_blocks contains 0.0.0.0/0",
+        "remediation": "Restrict ingress to approved networks.",
+    }
+    response = custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+
+    response_json = response.json()
+    assert response_json["findings"] == [finding]
+    assert response_json["decision"] == "block"
+    assert response_json["explanation"] == "Mocked explanation."
