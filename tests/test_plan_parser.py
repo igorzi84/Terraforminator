@@ -39,3 +39,29 @@ def test_parse_plan_noop(noop_plan):
 def test_parse_plan_requires_resource_changes():
     with pytest.raises(InvalidPlanError, match="resource_changes is required"):
         parse_plan({})
+
+
+def test_parse_plan_resource_changes_is_list():
+    with pytest.raises(InvalidPlanError, match="resource_changes must be a list"):
+        parse_plan({"resource_changes": {}})
+
+
+def test_parse_plan_item_in_resource_changes_is_dict():
+    with pytest.raises(
+        InvalidPlanError, match="resource_changes entries must be objects"
+    ):
+        parse_plan({"resource_changes": [None]})
+
+
+def test_parse_plan_change_missing_required_field():
+    with pytest.raises(
+        InvalidPlanError, match="resource change is missing a required field: change"
+    ):
+        parse_plan({"resource_changes": [{}]})
+
+
+def test_parse_plan_resource_changes_change_is_dict():
+    with pytest.raises(
+        InvalidPlanError, match="resource change change field must be an object"
+    ):
+        parse_plan({"resource_changes": [{"change": None}]})

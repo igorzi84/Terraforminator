@@ -45,3 +45,38 @@ def test_parse_plan_requires_resource_changes():
             "message": "resource_changes is required",
         }
     }
+
+
+def test_parse_plan_resource_changes_is_list():
+    response = client.post("/reviews", json={"plan": {"resource_changes": {}}})
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": {
+            "code": "invalid_plan",
+            "message": "resource_changes must be a list",
+        }
+    }
+
+
+def test_parse_plan_item_in_resource_changes_is_dict():
+    response = client.post("/reviews", json={"plan": {"resource_changes": [None]}})
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": {
+            "code": "invalid_plan",
+            "message": "resource_changes entries must be objects",
+        }
+    }
+
+
+def test_parse_plan_resource_changes_change_is_dict():
+    response = client.post(
+        "/reviews", json={"plan": {"resource_changes": [{"change": None}]}}
+    )
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": {
+            "code": "invalid_plan",
+            "message": "resource change change field must be an object",
+        }
+    }
