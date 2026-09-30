@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from terraforminator.api.v1.schemas import (
     FindingResponse,
@@ -8,6 +8,7 @@ from terraforminator.api.v1.schemas import (
     ReviewResponse,
 )
 from terraforminator.config import load_policy_config
+from terraforminator.domain.errors import InvalidPlanError
 from terraforminator.domain.models import PolicyConfig
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
@@ -21,7 +22,13 @@ def create_app(policy_config: PolicyConfig) -> FastAPI:
 
     @app.post("/reviews")
     def create_review(request: ReviewRequest) -> ReviewResponse:
-        changes = parse_plan(request.plan)
+        try:
+            changes = parse_plan(request.plan)
+        except InvalidPlanError as error:
+            raise HTTPException(
+                422, detail={"code": "invalid_plan", "message": str(error)}
+            )
+
         review = evaluate_review(changes, policy_config)
         findings = [
             FindingResponse(

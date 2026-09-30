@@ -34,3 +34,14 @@ def test_custom_app_approve(aws_sg_update_plan):
     response = custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
     assert response.json() == {"decision": "approve", "findings": []}
+
+
+def test_parse_plan_requires_resource_changes():
+    response = client.post("/reviews", json={"plan": {}})
+    assert response.status_code == 422
+    assert response.json() == {
+        "detail": {
+            "code": "invalid_plan",
+            "message": "resource_changes is required",
+        }
+    }

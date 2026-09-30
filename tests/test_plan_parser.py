@@ -1,3 +1,6 @@
+import pytest
+
+from terraforminator.domain.errors import InvalidPlanError
 from terraforminator.domain.plan_parser import parse_plan
 
 
@@ -31,3 +34,8 @@ def test_parse_plan_noop(noop_plan):
         "docker_container.nginx": ("no-op",),
         "docker_image.nginx": ("no-op",),
     }
+
+
+def test_parse_plan_requires_resource_changes():
+    with pytest.raises(InvalidPlanError, match="resource_changes is required"):
+        parse_plan({})
