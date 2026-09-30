@@ -6,5 +6,5 @@ def decide_review(findings: list[Finding]) -> ReviewDecision:
         return "block"
     if any(finding.severity == "medium" for finding in findings):
         return "needs_review"
-  
+
     return "approve"

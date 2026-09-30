@@ -1,4 +1,9 @@
-from terraforminator.domain.models import Finding, PolicyConfig, ResourceChange
+from terraforminator.domain.models import (
+    Finding,
+    PolicyConfig,
+    ResourceChange,
+    ReviewResult,
+)
 
 
 def test_replacement_keeps_both_actions():
@@ -39,3 +44,14 @@ def test_policy_config_subset():
 def test_policy_config_required_tags():
     policy_config = PolicyConfig()
     assert policy_config.required_tags == frozenset({"Project", "Environment", "Owner"})
+
+
+def test_review_result():
+    finding = Finding(
+        id="public-inbound-access",
+        severity="high",
+        resource_address="aws_security_group.web",
+        evidence="ingress.cidr_blocks contains 0.0.0.0/0",
+        remediation="Restrict ingress to approved networks.",
+    )
+    assert ReviewResult(decision="approve", findings=(finding,))

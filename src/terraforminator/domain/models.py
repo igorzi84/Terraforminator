@@ -5,6 +5,7 @@ ChangeAction = Literal["create", "update", "delete", "no-op", "read"]
 Severity = Literal["low", "medium", "high"]
 ReviewDecision = Literal["approve", "needs_review", "block"]
 
+
 @dataclass(frozen=True)
 class ResourceChange:
     address: str
@@ -33,7 +34,13 @@ class PolicyConfig:
             "iam-wildcard-permission",
             "destructive-stateful-change",
             "storage-encryption",
-            "missing-required-tags"
+            "missing-required-tags",
         }
     )
     required_tags: frozenset[str] = frozenset({"Project", "Environment", "Owner"})
+
+
+@dataclass(frozen=True)
+class ReviewResult:
+    decision: ReviewDecision
+    findings: tuple[Finding, ...]
