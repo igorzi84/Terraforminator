@@ -9,7 +9,12 @@ client = TestClient(app)
 def test_create_review_approve(create_plan):
     response = client.post("/reviews", json={"plan": create_plan})
     assert response.status_code == 200
-    assert response.json() == {"decision": "approve", "findings": []}
+    response_json = response.json()
+
+    assert response_json["decision"] == "approve"
+    assert response_json["findings"] == []
+    assert "approve" in response_json["explanation"]
+    assert "Human approval is still required" in response_json["explanation"]
 
 
 def test_create_review_block(aws_sg_update_plan):
@@ -22,7 +27,15 @@ def test_create_review_block(aws_sg_update_plan):
     }
     response = client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
-    assert response.json() == {"decision": "block", "findings": [finding]}
+
+    response_json = response.json()
+    assert response_json["decision"] == "block"
+    assert response_json["findings"] == [finding]
+    assert "explanation" in response_json
+    assert finding["id"] in response_json["explanation"]
+    assert finding["severity"] in response_json["explanation"]
+    assert finding["evidence"] in response_json["explanation"]
+    assert finding["resource_address"] in response_json["explanation"]
 
 
 def test_custom_app_approve(aws_sg_update_plan):
@@ -32,8 +45,12 @@ def test_custom_app_approve(aws_sg_update_plan):
     custom_client = TestClient(custom_app)
 
     response = custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
+    response_json = response.json()
     assert response.status_code == 200
-    assert response.json() == {"decision": "approve", "findings": []}
+    assert response_json["decision"] == "approve"
+    assert response_json["findings"] == []
+    assert "approve" in response_json["explanation"]
+    assert "Human approval is still required" in response_json["explanation"]
 
 
 def test_parse_plan_requires_resource_changes():

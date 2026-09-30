@@ -20,3 +20,4 @@ class ReviewRequest(BaseModel):
 class ReviewResponse(BaseModel):
     decision: ReviewDecision
     findings: list[FindingResponse]
+    explanation: str

@@ -9,6 +9,7 @@ from terraforminator.api.v1.schemas import (
 )
 from terraforminator.config import load_policy_config
 from terraforminator.domain.errors import InvalidPlanError
+from terraforminator.domain.explainer import explain_review
 from terraforminator.domain.models import PolicyConfig
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
@@ -40,8 +41,11 @@ def create_app(policy_config: PolicyConfig) -> FastAPI:
             )
             for finding in review.findings
         ]
+        explanation = explain_review(review)
 
-        return ReviewResponse(decision=review.decision, findings=findings)
+        return ReviewResponse(
+            decision=review.decision, findings=findings, explanation=explanation
+        )
 
     return app
 
