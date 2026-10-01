@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException
 
@@ -28,6 +29,7 @@ def create_app(
 
     @app.post("/reviews")
     def create_review(request: ReviewRequest) -> ReviewResponse:
+        review_id = uuid4()
         try:
             changes = parse_plan(request.plan)
         except InvalidPlanError as error:
@@ -49,7 +51,10 @@ def create_app(
         explanation = explanation_provider.explain(review)
 
         return ReviewResponse(
-            decision=review.decision, findings=findings, explanation=explanation
+            review_id=review_id,
+            decision=review.decision,
+            findings=findings,
+            explanation=explanation,
         )
 
     return app

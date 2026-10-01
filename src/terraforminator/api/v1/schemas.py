@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -18,6 +19,7 @@ class ReviewRequest(BaseModel):
 
 
 class ReviewResponse(BaseModel):
+    review_id: UUID
     decision: ReviewDecision
     findings: list[FindingResponse]
     explanation: str

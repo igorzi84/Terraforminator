@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from typing import Any, Literal
+from uuid import UUID
 
 ChangeAction = Literal["create", "update", "delete", "no-op", "read"]
 Severity = Literal["low", "medium", "high"]
 ReviewDecision = Literal["approve", "needs_review", "block"]
+ApprovalStatus = Literal["pending", "approved", "rejected"]
 
 
 @dataclass(frozen=True)
@@ -44,3 +46,19 @@ class PolicyConfig:
 class ReviewResult:
     decision: ReviewDecision
     findings: tuple[Finding, ...]
+
+
+@dataclass(frozen=True)
+class ApprovalRecord:
+    review_id: UUID
+    status: ApprovalStatus
+    reviewer: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if self.status not in ("approved", "rejected"):
+            raise ValueError("Wrong approval status")
+        if not isinstance(self.reviewer, str) or not self.reviewer.strip():
+            raise ValueError("Missing reviewer")
+        if not isinstance(self.reason, str) or not self.reason.strip():
+            raise ValueError("Missing reason")

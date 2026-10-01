@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
 from terraforminator.deterministic_explanation_provider import (
@@ -130,3 +132,18 @@ def test_fake_explanation_provider(aws_sg_update_plan):
     assert response_json["findings"] == [finding]
     assert response_json["decision"] == "block"
     assert response_json["explanation"] == "Mocked explanation."
+
+
+def test_unique_review_id(create_plan):
+    first_response = client.post("/reviews", json={"plan": create_plan})
+    second_response = client.post("/reviews", json={"plan": create_plan})
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+
+    first_id = UUID(first_response.json()["review_id"])
+    second_id = UUID(second_response.json()["review_id"])
+
+    assert first_id.version == 4
+    assert second_id.version == 4
+    assert first_id != second_id
