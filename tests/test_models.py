@@ -7,6 +7,7 @@ from terraforminator.domain.models import (
     Finding,
     PolicyConfig,
     ResourceChange,
+    Review,
     ReviewResult,
 )
 
@@ -94,3 +95,14 @@ def test_approval_record_raises_error_on_missing_reason(reason):
         ApprovalRecord(
             review_id=uuid4(), status="approved", reviewer="Igor", reason=reason
         )
+
+
+def test_review():
+    review_id = uuid4()
+    review = Review(
+        review_id=review_id,
+        result=ReviewResult(decision="approve", findings=()),
+    )
+    assert review.review_id == review_id
+    assert review.result.decision == "approve"
+    assert review.approval_status == "pending"

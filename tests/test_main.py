@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
@@ -147,3 +147,38 @@ def test_unique_review_id(create_plan):
     assert first_id.version == 4
     assert second_id.version == 4
     assert first_id != second_id
+
+
+def test_get_saved_review(aws_sg_update_plan):
+    finding = {
+        "id": "public-inbound-access",
+        "severity": "high",
+        "resource_address": "aws_security_group.web",
+        "evidence": "ingress.cidr_blocks contains 0.0.0.0/0",
+        "remediation": "Restrict ingress to approved networks.",
+    }
+
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+
+    review_id = UUID(response.json()["review_id"])
+    response = client.get(f"/reviews/{review_id}")
+    assert response.status_code == 200
+
+    review = response.json()
+    assert review["review_id"] == str(review_id)
+    assert review["findings"] == [finding]
+    assert review["decision"] == "block"
+    assert review["approval_status"] == "pending"
+
+
+def test_get_unknown_uuid():
+    review_id = uuid4()
+    response = client.get(f"/reviews/{review_id}")
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": {
+            "code": "review_not_found",
+            "message": "Review not found",
+        }
+    }

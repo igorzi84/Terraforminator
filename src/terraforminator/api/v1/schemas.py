@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from terraforminator.domain.models import ReviewDecision, Severity
+from terraforminator.domain.models import ApprovalStatus, ReviewDecision, Severity
 
 
 class FindingResponse(BaseModel):
@@ -23,3 +23,10 @@ class ReviewResponse(BaseModel):
     decision: ReviewDecision
     findings: list[FindingResponse]
     explanation: str
+
+
+class StoredReviewResponse(BaseModel):
+    review_id: UUID
+    decision: ReviewDecision
+    findings: list[FindingResponse]
+    approval_status: ApprovalStatus

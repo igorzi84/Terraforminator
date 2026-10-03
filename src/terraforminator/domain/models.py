@@ -62,3 +62,10 @@ class ApprovalRecord:
             raise ValueError("Missing reviewer")
         if not isinstance(self.reason, str) or not self.reason.strip():
             raise ValueError("Missing reason")
+
+
+@dataclass(frozen=True)
+class Review:
+    review_id: UUID
+    result: ReviewResult
+    approval_status: ApprovalStatus = "pending"
