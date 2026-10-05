@@ -102,7 +102,9 @@ def test_review():
     review = Review(
         review_id=review_id,
         result=ReviewResult(decision="approve", findings=()),
+        plan_hash="hash",
     )
     assert review.review_id == review_id
     assert review.result.decision == "approve"
     assert review.approval_status == "pending"
+    assert review.plan_hash == "hash"

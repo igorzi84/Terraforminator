@@ -13,6 +13,7 @@ def pending_review_store():
     review = Review(
         review_id=review_id,
         result=ReviewResult(decision="block", findings=()),
+        plan_hash="hash",
     )
     store.save_review(review)
     return store, review
@@ -46,6 +47,7 @@ def test_save_approval(pending_review_store):
     stored_review = store.get_review(review.review_id)
     assert stored_review.approval_status == "approved"
     assert stored_review.result == review.result
+    assert stored_review.plan_hash == review.plan_hash
 
     stored_record = store.get_record(review.review_id)
     assert stored_record == record
@@ -91,6 +93,7 @@ def test_rejected_record(pending_review_store):
     stored_review = store.get_review(review.review_id)
     assert stored_review.approval_status == "rejected"
     assert stored_review.result == review.result
+    assert stored_review.plan_hash == review.plan_hash
 
     stored_record = store.get_record(review.review_id)
     assert stored_record == record

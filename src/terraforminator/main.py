@@ -17,6 +17,7 @@ from terraforminator.deterministic_explanation_provider import (
 )
 from terraforminator.domain.errors import InvalidPlanError
 from terraforminator.domain.models import ApprovalRecord, PolicyConfig, Review
+from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
 from terraforminator.explanation_provider import ExplanationProvider
@@ -39,6 +40,7 @@ def to_stored_review_response(review: Review) -> StoredReviewResponse:
     ]
     return StoredReviewResponse(
         review_id=review.review_id,
+        plan_hash=review.plan_hash,
         decision=review.result.decision,
         findings=findings,
         approval_status=review.approval_status,
@@ -54,6 +56,7 @@ def create_app(
     @app.post("/reviews")
     def create_review(request: ReviewRequest) -> ReviewResponse:
         review_id = uuid4()
+        plan_hash = hash_plan(request.plan)
 
         try:
             changes = parse_plan(request.plan)
@@ -63,7 +66,7 @@ def create_app(
             )
 
         result = evaluate_review(changes, policy_config)
-        review = Review(review_id=review_id, result=result)
+        review = Review(review_id=review_id, result=result, plan_hash=plan_hash)
         review_store.save_review(review)
 
         findings = [
@@ -80,6 +83,7 @@ def create_app(
 
         return ReviewResponse(
             review_id=review_id,
+            plan_hash=plan_hash,
             decision=result.decision,
             findings=findings,
             explanation=explanation,

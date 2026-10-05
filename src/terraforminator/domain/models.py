@@ -69,4 +69,5 @@ class ApprovalRecord:
 class Review:
     review_id: UUID
     result: ReviewResult
+    plan_hash: str
     approval_status: ApprovalStatus = "pending"

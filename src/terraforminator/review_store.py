@@ -30,6 +30,7 @@ class InMemoryReviewStore:
             review_id=record.review_id,
             result=review.result,
             approval_status=record.status,
+            plan_hash=review.plan_hash,
         )
         self._save_record(record)
         self.save_review(updated_review)

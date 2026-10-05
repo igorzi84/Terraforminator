@@ -7,6 +7,7 @@ from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
 from terraforminator.domain.models import PolicyConfig, ReviewResult
+from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.main import app, create_app
 
 
@@ -19,6 +20,7 @@ client = TestClient(app)
 
 
 def test_create_review_approve(create_plan):
+    plan_hash = hash_plan(create_plan)
     response = client.post("/reviews", json={"plan": create_plan})
     assert response.status_code == 200
     response_json = response.json()
@@ -27,6 +29,7 @@ def test_create_review_approve(create_plan):
     assert response_json["findings"] == []
     assert "approve" in response_json["explanation"]
     assert "Human approval is still required" in response_json["explanation"]
+    assert response_json["plan_hash"] == plan_hash
 
 
 def test_create_review_block(aws_sg_update_plan):
@@ -151,6 +154,7 @@ def test_unique_review_id(create_plan):
 
 
 def test_get_saved_review(aws_sg_update_plan):
+    plan_hash = hash_plan(aws_sg_update_plan)
     finding = {
         "id": "public-inbound-access",
         "severity": "high",
@@ -162,7 +166,10 @@ def test_get_saved_review(aws_sg_update_plan):
     response = client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
 
-    review_id = response.json()["review_id"]
+    review = response.json()
+    review_id = review["review_id"]
+    assert review["plan_hash"] == plan_hash
+
     response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
 
@@ -171,6 +178,7 @@ def test_get_saved_review(aws_sg_update_plan):
     assert review["findings"] == [finding]
     assert review["decision"] == "block"
     assert review["approval_status"] == "pending"
+    assert review["plan_hash"] == plan_hash
 
 
 def test_get_unknown_uuid():

@@ -5,8 +5,9 @@ normalizes resource changes, runs deterministic policy checks, and returns a
 review decision with concrete findings.
 
 It is a local-first portfolio project. The current implementation provides the
-plan-review domain layer and a small FastAPI endpoint; AI explanations, human
-approval workflows, audit storage, and observability are planned next.
+plan-review domain layer, deterministic explanations, and a FastAPI API for
+storing reviews, recording human decisions, and retrieving audit records.
+Temporal workflows, durable storage, and observability are planned next.
 
 ## Safety boundary
 
@@ -80,35 +81,64 @@ interactive documentation at `/docs`.
 
 ## API
 
-`POST /reviews` accepts a plan document and returns the deterministic review
-result.
+Reviews and approval records are stored in memory for each app instance. They
+reset when the process restarts and are not shared between server processes.
+The current explanation provider is deterministic; no model API is required.
 
-Request shape:
+Run this example from the repository root with the API running. It uses Python
+to wrap the checked-in local Docker fixture in the request body.
 
-```json
-{
-  "plan": {
-    "resource_changes": []
-  }
-}
+### Create a review
+
+```bash
+python3 -c 'import json; from pathlib import Path; print(json.dumps({"plan": json.loads(Path("tests/fixtures/plans/nginx-create.json").read_text())}))' | \
+  curl --fail-with-body -sS http://127.0.0.1:8000/reviews \
+    -H 'Content-Type: application/json' --data-binary @-
 ```
 
-Example response:
+The response contains `review_id`, `decision`, `findings`, and `explanation`.
+Copy the returned ID into a shell variable:
 
-```json
-{
-  "decision": "block",
-  "findings": [
-    {
-      "id": "public-inbound-access",
-      "severity": "high",
-      "resource_address": "aws_security_group.web",
-      "evidence": "ingress.cidr_blocks contains 0.0.0.0/0",
-      "remediation": "Restrict ingress to approved networks."
-    }
-  ]
-}
+```bash
+review_id='<returned review_id>'
 ```
+
+### Retrieve the review
+
+```bash
+curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id"
+```
+
+The response contains `review_id`, `decision`, `findings`, and
+`approval_status`, initially `"pending"`. Retrieval does not regenerate or
+return the explanation.
+
+### Record a human decision
+
+```bash
+curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id/approval" \
+  -H 'Content-Type: application/json' \
+  --data '{"status":"approved","reviewer":"Igor","reason":"Reviewed the local Docker changes."}'
+```
+
+Use `"rejected"` to reject the review. Reviewer and reason must be nonblank.
+The response returns the updated review. A human decision changes only
+`approval_status`; it preserves the deterministic policy decision and findings,
+even when a human approves a policy `"block"`. This endpoint records a decision;
+it does not deploy infrastructure or provide a CI/CD gate yet.
+
+### Retrieve the audit record
+
+```bash
+curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id/approval"
+```
+
+The response contains `review_id`, `status`, `reviewer`, and `reason`.
+
+Invalid plans or approval inputs return `422`. Unknown reviews return `404`;
+retrieving an approval record before a human decision also returns `404` with
+`approval_not_found`. A second human decision returns `409` with
+`review_not_pending` and leaves the original decision intact.
 
 ## Local Terraform demo
 
@@ -134,7 +164,8 @@ terraform destroy
 Checked-in fixtures under `tests/fixtures/plans/` are fictional and safe to
 commit. They cover both a local Docker plan and a risky public AWS security
 group update. The tests cover parsing, individual policy checks, configuration
-loading, decision rules, the domain pipeline, and the FastAPI endpoint.
+loading, decision rules, the domain pipeline, store isolation, and the review
+and human-decision API routes.
 
 Before committing changes:
 
@@ -145,9 +176,8 @@ git diff --check
 
 ## Planned work
 
-- Validation and clearer API errors for malformed plan documents.
-- Advisory AI explanations grounded in policy findings.
-- Human approval workflow, audit records, structured logs, and Prometheus
-  metrics.
+- Optional model-backed advisory explanations grounded in policy findings.
+- Temporal human approval workflow and a CI/CD approval gate.
+- Durable review and audit storage, structured logs, and Prometheus metrics.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.

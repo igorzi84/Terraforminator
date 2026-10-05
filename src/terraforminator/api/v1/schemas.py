@@ -20,6 +20,7 @@ class ReviewRequest(BaseModel):
 
 class ReviewResponse(BaseModel):
     review_id: UUID
+    plan_hash: str
     decision: ReviewDecision
     findings: list[FindingResponse]
     explanation: str
@@ -27,6 +28,7 @@ class ReviewResponse(BaseModel):
 
 class StoredReviewResponse(BaseModel):
     review_id: UUID
+    plan_hash: str
     decision: ReviewDecision
     findings: list[FindingResponse]
     approval_status: ApprovalStatus
