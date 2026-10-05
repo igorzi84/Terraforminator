@@ -6,6 +6,7 @@ ChangeAction = Literal["create", "update", "delete", "no-op", "read"]
 Severity = Literal["low", "medium", "high"]
 ReviewDecision = Literal["approve", "needs_review", "block"]
 ApprovalStatus = Literal["pending", "approved", "rejected"]
+ApprovalDecision = Literal["approved", "rejected"]
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ class ReviewResult:
 @dataclass(frozen=True)
 class ApprovalRecord:
     review_id: UUID
-    status: ApprovalStatus
+    status: ApprovalDecision
     reviewer: str
     reason: str
 

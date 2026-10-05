@@ -1,15 +1,19 @@
 from uuid import UUID
 
-from terraforminator.domain.models import ApprovalRecord, ApprovalStatus
+from terraforminator.domain.models import (
+    ApprovalDecision,
+    ApprovalRecord,
+    ApprovalStatus,
+)
 
 
-def approve_review(status: ApprovalStatus) -> ApprovalStatus:
+def approve_review(status: ApprovalStatus) -> ApprovalDecision:
     if status != "pending":
         raise ValueError("Review is not pending.")
     return "approved"
 
 
-def reject_review(status: ApprovalStatus) -> ApprovalStatus:
+def reject_review(status: ApprovalStatus) -> ApprovalDecision:
     if status != "pending":
         raise ValueError("Review is not pending.")
     return "rejected"

@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, HTTPException
 
 from terraforminator.api.v1.schemas import (
+    ApprovalRecordResponse,
     ApprovalRequest,
     FindingResponse,
     ReviewRequest,
@@ -23,6 +24,25 @@ from terraforminator.review_store import InMemoryReviewStore
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 POLICY_CONFIG_PATH = CONFIG_DIR / "policies.toml"
+
+
+def to_stored_review_response(review: Review) -> StoredReviewResponse:
+    findings = [
+        FindingResponse(
+            id=finding.id,
+            severity=finding.severity,
+            resource_address=finding.resource_address,
+            evidence=finding.evidence,
+            remediation=finding.remediation,
+        )
+        for finding in review.result.findings
+    ]
+    return StoredReviewResponse(
+        review_id=review.review_id,
+        decision=review.result.decision,
+        findings=findings,
+        approval_status=review.approval_status,
+    )
 
 
 def create_app(
@@ -74,23 +94,7 @@ def create_app(
                 404, detail={"code": "review_not_found", "message": "Review not found"}
             )
 
-        findings = [
-            FindingResponse(
-                id=finding.id,
-                severity=finding.severity,
-                resource_address=finding.resource_address,
-                evidence=finding.evidence,
-                remediation=finding.remediation,
-            )
-            for finding in review.result.findings
-        ]
-
-        return StoredReviewResponse(
-            review_id=review_id,
-            decision=review.result.decision,
-            findings=findings,
-            approval_status=review.approval_status,
-        )
+        return to_stored_review_response(review)
 
     @app.post("/reviews/{review_id}/approval")
     def approve_review(
@@ -118,21 +122,26 @@ def create_app(
             )
 
         review = review_store.get_review(review_id=review_id)
-        findings = [
-            FindingResponse(
-                id=finding.id,
-                severity=finding.severity,
-                resource_address=finding.resource_address,
-                evidence=finding.evidence,
-                remediation=finding.remediation,
+        return to_stored_review_response(review)
+
+    @app.get("/reviews/{review_id}/approval")
+    def get_record(review_id: UUID) -> ApprovalRecordResponse:
+        try:
+            record = review_store.get_record(review_id)
+        except KeyError:
+            raise HTTPException(
+                404,
+                detail={
+                    "code": "approval_not_found",
+                    "message": "Approval record not found.",
+                },
             )
-            for finding in review.result.findings
-        ]
-        return StoredReviewResponse(
+
+        return ApprovalRecordResponse(
             review_id=review_id,
-            decision=review.result.decision,
-            findings=findings,
-            approval_status=review.approval_status,
+            status=record.status,
+            reviewer=record.reviewer,
+            reason=record.reason,
         )
 
     return app

@@ -185,7 +185,7 @@ def test_get_unknown_uuid():
     }
 
 
-@pytest.mark.parametrize("status",["approved", "rejected"])
+@pytest.mark.parametrize("status", ["approved", "rejected"])
 def test_record_human_decision(aws_sg_update_plan, status):
     finding = {
         "id": "public-inbound-access",
@@ -309,3 +309,39 @@ def test_invalid_approval_input(
     detail = response.json()["detail"][0]
     assert detail["type"] == error_type
     assert detail["loc"] == ["body", field]
+
+
+def test_get_approval_record(aws_sg_update_plan):
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
+    )
+    assert response.status_code == 200
+
+    review = response.json()
+    assert review["review_id"] == review_id
+    assert review["decision"] == "block"
+    assert review["approval_status"] == "approved"
+
+    response = client.get(f"/reviews/{review_id}/approval")
+    assert response.status_code == 200
+
+    record = response.json()
+    assert record["review_id"] == review_id
+    assert record["status"] == "approved"
+    assert record["reviewer"] == "Igor"
+    assert record["reason"] == "Reason"
+
+
+def test_get_approval_record_for_pending_review(aws_sg_update_plan):
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    response = client.get(f"/reviews/{review_id}/approval")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "approval_not_found"

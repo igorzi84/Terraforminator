@@ -43,3 +43,10 @@ class ApprovalRequest(BaseModel):
         if not value.strip():
             raise ValueError("Must not be blank")
         return value
+
+
+class ApprovalRecordResponse(BaseModel):
+    review_id: UUID
+    status: Literal["approved", "rejected"]
+    reviewer: str
+    reason: str
