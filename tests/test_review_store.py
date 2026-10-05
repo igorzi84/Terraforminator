@@ -2,30 +2,109 @@ from uuid import uuid4
 
 import pytest
 
-from terraforminator.domain.models import Review, ReviewResult
+from terraforminator.domain.models import ApprovalRecord, Review, ReviewResult
 from terraforminator.review_store import InMemoryReviewStore
 
 
-def test_save_and_retrieve_review():
+@pytest.fixture(scope="function")
+def pending_review_store():
     store = InMemoryReviewStore()
     review_id = uuid4()
     review = Review(
         review_id=review_id,
-        result=ReviewResult(decision="approve", findings=()),
+        result=ReviewResult(decision="block", findings=()),
     )
     store.save_review(review)
-    retrieved_review = store.get_review(review_id)
+    return store, review
+
+
+def test_save_and_retrieve_review(pending_review_store):
+    store, review = pending_review_store
+
+    retrieved_review = store.get_review(review.review_id)
     assert retrieved_review == review
 
 
-def test_stores_isolation():
-    first_store = InMemoryReviewStore()
+def test_stores_isolation(pending_review_store):
+    _, review = pending_review_store
     second_store = InMemoryReviewStore()
-    review_id = uuid4()
-    review = Review(
-        review_id=review_id,
-        result=ReviewResult(decision="approve", findings=()),
-    )
-    first_store.save_review(review)
+
     with pytest.raises(KeyError):
-        second_store.get_review(review_id)
+        second_store.get_review(review.review_id)
+
+
+def test_save_approval(pending_review_store):
+    store, review = pending_review_store
+
+    record = ApprovalRecord(
+        review_id=review.review_id,
+        status="approved",
+        reviewer="Igor",
+        reason="Some reason",
+    )
+    store.save_approval(record)
+    stored_review = store.get_review(review.review_id)
+    assert stored_review.approval_status == "approved"
+    assert stored_review.result == review.result
+
+    stored_record = store.get_record(review.review_id)
+    assert stored_record == record
+
+
+def test_second_approval_raises_error(pending_review_store):
+    store, review = pending_review_store
+
+    record = ApprovalRecord(
+        review_id=review.review_id,
+        status="approved",
+        reviewer="Igor",
+        reason="Some reason",
+    )
+    store.save_approval(record)
+    stored_review = store.get_review(review.review_id)
+    assert stored_review.approval_status == "approved"
+    assert stored_review.result == review.result
+
+    modified_record = ApprovalRecord(
+        review_id=review.review_id,
+        status="rejected",
+        reviewer="Igor",
+        reason="Some reason",
+    )
+    with pytest.raises(ValueError, match="Review is not pending"):
+        store.save_approval(modified_record)
+
+    assert store.get_review(review.review_id) == stored_review
+    assert store.get_record(review.review_id) == record
+
+
+def test_rejected_record(pending_review_store):
+    store, review = pending_review_store
+
+    record = ApprovalRecord(
+        review_id=review.review_id,
+        status="rejected",
+        reviewer="Igor",
+        reason="Some reason",
+    )
+    store.save_approval(record)
+    stored_review = store.get_review(review.review_id)
+    assert stored_review.approval_status == "rejected"
+    assert stored_review.result == review.result
+
+    stored_record = store.get_record(review.review_id)
+    assert stored_record == record
+
+
+def test_approval_unknown_review():
+    store = InMemoryReviewStore()
+    review_id = uuid4()
+
+    record = ApprovalRecord(
+        review_id=review_id, status="rejected", reviewer="Igor", reason="Some reason"
+    )
+    with pytest.raises(KeyError):
+        store.save_approval(record)
+
+    with pytest.raises(KeyError):
+        store.get_record(review_id)
