@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from fastapi import FastAPI, HTTPException
 
 from terraforminator.api.v1.schemas import (
+    ApprovalRequest,
     FindingResponse,
     ReviewRequest,
     ReviewResponse,
@@ -14,7 +15,7 @@ from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
 from terraforminator.domain.errors import InvalidPlanError
-from terraforminator.domain.models import PolicyConfig, Review
+from terraforminator.domain.models import ApprovalRecord, PolicyConfig, Review
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
 from terraforminator.explanation_provider import ExplanationProvider
@@ -84,6 +85,49 @@ def create_app(
             for finding in review.result.findings
         ]
 
+        return StoredReviewResponse(
+            review_id=review_id,
+            decision=review.result.decision,
+            findings=findings,
+            approval_status=review.approval_status,
+        )
+
+    @app.post("/reviews/{review_id}/approval")
+    def approve_review(
+        approval_request: ApprovalRequest, review_id: UUID
+    ) -> StoredReviewResponse:
+        approval_record = ApprovalRecord(
+            review_id=review_id,
+            status=approval_request.status,
+            reviewer=approval_request.reviewer,
+            reason=approval_request.reason,
+        )
+        try:
+            review_store.save_approval(approval_record)
+        except KeyError:
+            raise HTTPException(
+                404, detail={"code": "review_not_found", "message": "Review not found"}
+            )
+        except ValueError:
+            raise HTTPException(
+                409,
+                detail={
+                    "code": "review_not_pending",
+                    "message": "Review already has a human decision",
+                },
+            )
+
+        review = review_store.get_review(review_id=review_id)
+        findings = [
+            FindingResponse(
+                id=finding.id,
+                severity=finding.severity,
+                resource_address=finding.resource_address,
+                evidence=finding.evidence,
+                remediation=finding.remediation,
+            )
+            for finding in review.result.findings
+        ]
         return StoredReviewResponse(
             review_id=review_id,
             decision=review.result.decision,

@@ -1,5 +1,6 @@
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from terraforminator.deterministic_explanation_provider import (
@@ -161,12 +162,12 @@ def test_get_saved_review(aws_sg_update_plan):
     response = client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
 
-    review_id = UUID(response.json()["review_id"])
+    review_id = response.json()["review_id"]
     response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
 
     review = response.json()
-    assert review["review_id"] == str(review_id)
+    assert review["review_id"] == review_id
     assert review["findings"] == [finding]
     assert review["decision"] == "block"
     assert review["approval_status"] == "pending"
@@ -184,3 +185,127 @@ def test_get_unknown_uuid():
     }
 
 
+@pytest.mark.parametrize("status",["approved", "rejected"])
+def test_record_human_decision(aws_sg_update_plan, status):
+    finding = {
+        "id": "public-inbound-access",
+        "severity": "high",
+        "resource_address": "aws_security_group.web",
+        "evidence": "ingress.cidr_blocks contains 0.0.0.0/0",
+        "remediation": "Restrict ingress to approved networks.",
+    }
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": status, "reviewer": "Igor", "reason": "Reason"},
+    )
+    assert response.status_code == 200
+
+    review = response.json()
+    assert review["review_id"] == review_id
+    assert review["findings"] == [finding]
+    assert review["decision"] == "block"
+    assert review["approval_status"] == status
+
+    # Verify update persisted in memory
+    response = client.get(f"/reviews/{review_id}")
+    assert response.status_code == 200
+
+    review = response.json()
+    assert review["review_id"] == review_id
+    assert review["findings"] == [finding]
+    assert review["decision"] == "block"
+    assert review["approval_status"] == status
+
+
+def test_duplicate_approve_review(aws_sg_update_plan):
+    finding = {
+        "id": "public-inbound-access",
+        "severity": "high",
+        "resource_address": "aws_security_group.web",
+        "evidence": "ingress.cidr_blocks contains 0.0.0.0/0",
+        "remediation": "Restrict ingress to approved networks.",
+    }
+
+    # Create a review
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    # Approve it
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
+    )
+    assert response.status_code == 200
+
+    review = response.json()
+    assert review["review_id"] == review_id
+    assert review["findings"] == [finding]
+    assert review["decision"] == "block"
+    assert review["approval_status"] == "approved"
+
+    # Try to approve again with different status
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": "rejected", "reviewer": "Igor", "reason": "Reason"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "review_not_pending"
+
+    # Get the review and verify it didnt change
+    response = client.get(f"/reviews/{review_id}")
+    assert response.status_code == 200
+
+    review = response.json()
+    assert review["review_id"] == review_id
+    assert review["findings"] == [finding]
+    assert review["decision"] == "block"
+    assert review["approval_status"] == "approved"
+
+
+def test_approval_with_unknown_uuid():
+    review_id = uuid4()
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": "rejected", "reviewer": "Igor", "reason": "Reason"},
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "review_not_found"
+
+
+@pytest.mark.parametrize(
+    "status, reviewer, reason, error_type, field",
+    [
+        ("pending", "Igor", "Reason", "literal_error", "status"),
+        ("approved", "", "Reason", "value_error", "reviewer"),
+        ("approved", "   ", "Reason", "value_error", "reviewer"),
+        ("approved", "Igor", "", "value_error", "reason"),
+        ("approved", "Igor", "   ", "value_error", "reason"),
+    ],
+)
+def test_invalid_approval_input(
+    aws_sg_update_plan, status, reviewer, reason, error_type, field
+):
+    """
+    1. Verifies "pending" is rejected
+    2. Verifies error on empty reviewer
+    3. Verifies whitespace only reviewer
+    4. Verifies error on empty reason
+    5. Verifies whitespace only reason
+    """
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": status, "reviewer": reviewer, "reason": reason},
+    )
+    assert response.status_code == 422
+
+    detail = response.json()["detail"][0]
+    assert detail["type"] == error_type
+    assert detail["loc"] == ["body", field]
