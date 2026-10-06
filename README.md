@@ -147,7 +147,10 @@ a CI/CD gate yet.
 curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id/approval"
 ```
 
-The response contains `review_id`, `status`, `reviewer`, and `reason`.
+The response contains `review_id`, `status`, `reviewer`, `reason`, and
+`decided_at`. The `decided_at` timestamp is the UTC time when the human decision
+was recorded, serialized as an ISO 8601 string. Retrieving the record preserves
+the original timestamp.
 
 Invalid plans or approval inputs return `422`. Unknown reviews return `404`;
 retrieving an approval record before a human decision also returns `404` with

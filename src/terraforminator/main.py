@@ -149,6 +149,7 @@ def create_app(
             status=record.status,
             reviewer=record.reviewer,
             reason=record.reason,
+            decided_at=record.decided_at
         )
 
     return app

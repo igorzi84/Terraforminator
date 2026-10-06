@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -55,6 +56,7 @@ class ApprovalRecord:
     status: ApprovalDecision
     reviewer: str
     reason: str
+    decided_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         if self.status not in ("approved", "rejected"):

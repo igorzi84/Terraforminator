@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
@@ -343,6 +344,17 @@ def test_get_approval_record(aws_sg_update_plan):
     assert record["status"] == "approved"
     assert record["reviewer"] == "Igor"
     assert record["reason"] == "Reason"
+
+    # Verify UTC offset ia zero
+    decided_at = datetime.fromisoformat(record["decided_at"])
+    assert decided_at.utcoffset() == timedelta(0)
+
+    # Get again
+    response = client.get(f"/reviews/{review_id}/approval")
+    assert response.status_code == 200
+
+    record = response.json()
+    assert datetime.fromisoformat(record["decided_at"]) == decided_at
 
 
 def test_get_approval_record_for_pending_review(aws_sg_update_plan):

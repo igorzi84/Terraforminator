@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -65,12 +66,28 @@ def test_review_result():
 
 @pytest.mark.parametrize("status", ["approved", "rejected"])
 def test_approval_record(status):
+    before = datetime.now(UTC)
     review_id = uuid4()
     approval_record = ApprovalRecord(
         review_id=review_id, status=status, reviewer="Igor", reason="Reason"
     )
+    after = datetime.now(UTC)
     assert approval_record.review_id == review_id
     assert approval_record.status == status
+    assert before <= approval_record.decided_at <= after
+    assert approval_record.decided_at.utcoffset() == timedelta(0)
+
+
+def test_approval_record_preserves_explicit_timestamp():
+    expected = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
+    approval_record = ApprovalRecord(
+        review_id=uuid4(),
+        status="approved",
+        reviewer="Igor",
+        reason="Reason",
+        decided_at=expected,
+    )
+    assert approval_record.decided_at == expected
 
 
 @pytest.mark.parametrize("status", ["pending", "", None])

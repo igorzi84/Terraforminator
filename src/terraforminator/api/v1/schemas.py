@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -53,3 +54,4 @@ class ApprovalRecordResponse(BaseModel):
     status: Literal["approved", "rejected"]
     reviewer: str
     reason: str
+    decided_at: datetime
