@@ -109,9 +109,22 @@ review_id='<returned review_id>'
 curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id"
 ```
 
-The response contains `review_id`, `decision`, `findings`, and
-`approval_status`, initially `"pending"`. Retrieval does not regenerate or
+The response contains `review_id`, `plan_hash`, `decision`, `findings`,
+`approval_status`, and `can_deploy`. A new review has `approval_status` set to
+`"pending"` and `can_deploy` set to `false`. Retrieval does not regenerate or
 return the explanation.
+
+`can_deploy` is calculated from the current policy result and human decision:
+
+| Policy decision | Human pending | Human approved | Human rejected |
+| --- | --- | --- | --- |
+| `approve` | `false` | `true` | `false` |
+| `needs_review` | `false` | `true` | `false` |
+| `block` | `false` | `false` | `false` |
+
+Human approval is always required. A policy `block` keeps `can_deploy` false,
+even after human approval. This field reports deployment eligibility; CI/CD
+enforcement is still planned.
 
 ### Record a human decision
 
@@ -122,10 +135,11 @@ curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id/approval" \
 ```
 
 Use `"rejected"` to reject the review. Reviewer and reason must be nonblank.
-The response returns the updated review. A human decision changes only
-`approval_status`; it preserves the deterministic policy decision and findings,
-even when a human approves a policy `"block"`. This endpoint records a decision;
-it does not deploy infrastructure or provide a CI/CD gate yet.
+The response returns the updated review with a recalculated `can_deploy` value.
+A human decision updates `approval_status` and preserves the deterministic
+policy decision and findings, even when a human approves a policy `"block"`.
+This endpoint records a decision; it does not deploy infrastructure or provide
+a CI/CD gate yet.
 
 ### Retrieve the audit record
 

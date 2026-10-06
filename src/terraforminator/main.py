@@ -15,6 +15,7 @@ from terraforminator.config import load_policy_config
 from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
+from terraforminator.domain.deployment import can_deploy
 from terraforminator.domain.errors import InvalidPlanError
 from terraforminator.domain.models import ApprovalRecord, PolicyConfig, Review
 from terraforminator.domain.plan_hash import hash_plan
@@ -38,12 +39,14 @@ def to_stored_review_response(review: Review) -> StoredReviewResponse:
         )
         for finding in review.result.findings
     ]
+    deploy = can_deploy(review)
     return StoredReviewResponse(
         review_id=review.review_id,
         plan_hash=review.plan_hash,
         decision=review.result.decision,
         findings=findings,
         approval_status=review.approval_status,
+        can_deploy=deploy,
     )
 
 

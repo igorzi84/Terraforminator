@@ -32,6 +32,7 @@ class StoredReviewResponse(BaseModel):
     decision: ReviewDecision
     findings: list[FindingResponse]
     approval_status: ApprovalStatus
+    can_deploy: bool
 
 
 class ApprovalRequest(BaseModel):

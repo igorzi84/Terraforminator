@@ -353,3 +353,53 @@ def test_get_approval_record_for_pending_review(aws_sg_update_plan):
     response = client.get(f"/reviews/{review_id}/approval")
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "approval_not_found"
+
+
+def test_pending_review_can_deploy_false(aws_sg_update_plan):
+    """Test that a pending review returns can_deploy = False"""
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    response = client.get(f"/reviews/{review_id}")
+    assert response.status_code == 200
+    assert response.json()["can_deploy"] is False
+
+
+def test_blocked_review_can_deploy_false(aws_sg_update_plan):
+    """Test blocked review can_deploy = False even if approved by human"""
+    response = client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    # Approve review
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
+    )
+    assert response.status_code == 200
+    assert response.json()["can_deploy"] is False
+
+
+def test_approved_review_can_deploy(create_plan):
+    """Test approved review can_deploy = True"""
+    response = client.post("/reviews", json={"plan": create_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    # Get review before human approval, can_deploy should be False
+    response = client.get(f"/reviews/{review_id}")
+    assert response.status_code == 200
+    assert response.json()["can_deploy"] is False
+
+    # Approve review
+    response = client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
+    )
+    assert response.status_code == 200
+    assert response.json()["can_deploy"] is True
+
+    response = client.get(f"/reviews/{review_id}")
+    assert response.status_code == 200
+    assert response.json()["can_deploy"] is True
