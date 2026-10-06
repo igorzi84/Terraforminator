@@ -10,6 +10,8 @@ from terraforminator.deterministic_explanation_provider import (
 from terraforminator.domain.models import PolicyConfig, ReviewResult
 from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.main import app, create_app
+from terraforminator.review_store import InMemoryReviewStore
+from terraforminator.sqlite_review_store import SQLiteReviewStore
 
 
 class FakeExplanationProvider:
@@ -415,3 +417,63 @@ def test_approved_review_can_deploy(create_plan):
     response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
     assert response.json()["can_deploy"] is True
+
+
+def test_supplied_store(create_plan):
+    review_store = InMemoryReviewStore()
+    custom_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset()),
+        DeterministicExplanationProvider(),
+        review_store,
+    )
+    custom_client = TestClient(custom_app)
+
+    response = custom_client.post("/reviews", json={"plan": create_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    stored_review = review_store.get_review(UUID(review_id))
+    assert stored_review.review_id == UUID(review_id)
+    assert stored_review.plan_hash == hash_plan(create_plan)
+
+
+def test_sqlite_database(tmp_path, create_plan):
+    database_file = tmp_path / "reviews.db"
+    review_store = SQLiteReviewStore(database_file)
+    custom_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset()),
+        DeterministicExplanationProvider(),
+        review_store,
+    )
+    custom_client = TestClient(custom_app)
+
+    response = custom_client.post("/reviews", json={"plan": create_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    response = custom_client.post(
+        f"/reviews/{review_id}/approval",
+        json={"status": "approved", "reviewer": "Igor", "reason": "reason"},
+    )
+    assert response.status_code == 200
+    expected_review = response.json()
+
+    response = custom_client.get(f"/reviews/{review_id}/approval")
+    assert response.status_code == 200
+    expected_record = response.json()
+    
+    reopened_store = SQLiteReviewStore(database_file)
+    reopened_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset()),
+        DeterministicExplanationProvider(),
+        reopened_store,
+    )
+    reopened_client = TestClient(reopened_app)
+
+    reopened_record = reopened_client.get(f"/reviews/{review_id}/approval")
+    assert reopened_record.status_code == 200
+    assert reopened_record.json() == expected_record
+
+    reopened_review = reopened_client.get(f"/reviews/{review_id}")
+    assert reopened_review.status_code == 200
+    assert reopened_review.json() == expected_review

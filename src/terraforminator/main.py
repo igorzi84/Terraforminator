@@ -22,7 +22,7 @@ from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
 from terraforminator.explanation_provider import ExplanationProvider
-from terraforminator.review_store import InMemoryReviewStore
+from terraforminator.review_store import InMemoryReviewStore, ReviewStore
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 POLICY_CONFIG_PATH = CONFIG_DIR / "policies.toml"
@@ -51,10 +51,13 @@ def to_stored_review_response(review: Review) -> StoredReviewResponse:
 
 
 def create_app(
-    policy_config: PolicyConfig, explanation_provider: ExplanationProvider
+    policy_config: PolicyConfig,
+    explanation_provider: ExplanationProvider,
+    review_store: ReviewStore | None = None,
 ) -> FastAPI:
     app = FastAPI()
-    review_store = InMemoryReviewStore()
+    if review_store is None:
+        review_store = InMemoryReviewStore()
 
     @app.post("/reviews")
     def create_review(request: ReviewRequest) -> ReviewResponse:
@@ -149,7 +152,7 @@ def create_app(
             status=record.status,
             reviewer=record.reviewer,
             reason=record.reason,
-            decided_at=record.decided_at
+            decided_at=record.decided_at,
         )
 
     return app
