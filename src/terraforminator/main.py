@@ -11,7 +11,7 @@ from terraforminator.api.v1.schemas import (
     ReviewResponse,
     StoredReviewResponse,
 )
-from terraforminator.config import load_policy_config
+from terraforminator.config import load_app_settings, load_policy_config
 from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
@@ -23,6 +23,7 @@ from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
 from terraforminator.explanation_provider import ExplanationProvider
 from terraforminator.review_store import InMemoryReviewStore, ReviewStore
+from terraforminator.sqlite_review_store import SQLiteReviewStore
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 POLICY_CONFIG_PATH = CONFIG_DIR / "policies.toml"
@@ -159,4 +160,9 @@ def create_app(
 
 
 policy_config = load_policy_config(POLICY_CONFIG_PATH)
-app = create_app(policy_config, DeterministicExplanationProvider())
+settings = load_app_settings()
+review_store = SQLiteReviewStore(settings.database_path)
+
+app = create_app(
+    policy_config, DeterministicExplanationProvider(), review_store=review_store
+)

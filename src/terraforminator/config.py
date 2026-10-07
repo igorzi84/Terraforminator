@@ -1,7 +1,29 @@
+import os
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 
 from terraforminator.domain.models import PolicyConfig
+
+ROOT_DIR = Path(__file__).parent.parent.parent
+
+
+@dataclass
+class AppSettings:
+    database_path: Path
+
+
+def load_app_settings() -> AppSettings:
+    database_path = ROOT_DIR / "terraforminator.db"
+    database_path_str = os.getenv("TERRAFORMINATOR_DB_PATH")
+    if database_path_str is not None:
+        if not database_path_str.strip():
+            raise ValueError("TERRAFORMINATOR_DB_PATH must not be blank")
+        database_path = Path(database_path_str)
+
+    settings = AppSettings(database_path=database_path)
+
+    return settings
 
 
 def load_policy_config(config_path: Path) -> PolicyConfig:

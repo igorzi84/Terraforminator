@@ -6,8 +6,8 @@ review decision with concrete findings.
 
 It is a local-first portfolio project. The current implementation provides the
 plan-review domain layer, deterministic explanations, and a FastAPI API for
-storing reviews, recording human decisions, and retrieving audit records.
-Temporal workflows, durable storage, and observability are planned next.
+storing reviews in SQLite, recording human decisions, and retrieving audit
+records. Temporal workflows and observability are planned next.
 
 ## Safety boundary
 
@@ -79,10 +79,29 @@ uv run fastapi dev src/terraforminator/main.py
 The API is available at `http://127.0.0.1:8000`. FastAPI also exposes
 interactive documentation at `/docs`.
 
+### Database configuration
+
+The local API defaults to `terraforminator.db` in the repository root. Set
+`TERRAFORMINATOR_DB_PATH` to use a different database file:
+
+```bash
+TERRAFORMINATOR_DB_PATH=/tmp/terraforminator.db uv run fastapi dev src/terraforminator/main.py
+```
+
+The parent directory must already exist and be writable. SQLite creates the
+database file if it does not exist. Relative paths resolve from the directory
+where you start the server. Empty or whitespace-only values are rejected.
+Database files matching `*.db` are ignored by Git.
+
 ## API
 
-Reviews and approval records are stored in memory for each app instance. They
-reset when the process restarts and are not shared between server processes.
+The local API stores reviews and approval records in SQLite. They survive
+server restarts when the API uses the same database file. Recording a human
+decision updates the review and inserts its audit record in one transaction;
+if either write fails, both are rolled back.
+
+The `create_app()` factory retains an in-memory default for isolated tests;
+the local entrypoint explicitly supplies the configured SQLite store.
 The current explanation provider is deterministic; no model API is required.
 
 Run this example from the repository root with the API running. It uses Python
@@ -181,8 +200,9 @@ terraform destroy
 Checked-in fixtures under `tests/fixtures/plans/` are fictional and safe to
 commit. They cover both a local Docker plan and a risky public AWS security
 group update. The tests cover parsing, individual policy checks, configuration
-loading, decision rules, the domain pipeline, store isolation, and the review
-and human-decision API routes.
+loading, decision rules, the domain pipeline, store isolation, SQLite
+persistence and transaction rollback, and the review and human-decision API
+routes.
 
 Before committing changes:
 
@@ -195,6 +215,6 @@ git diff --check
 
 - Optional model-backed advisory explanations grounded in policy findings.
 - Temporal human approval workflow and a CI/CD approval gate.
-- Durable review and audit storage, structured logs, and Prometheus metrics.
+- Structured logs and Prometheus metrics.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.
