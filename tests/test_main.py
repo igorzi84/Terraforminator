@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -17,6 +18,11 @@ from terraforminator.sqlite_review_store import SQLiteReviewStore
 class FakeExplanationProvider:
     def explain(self, review: ReviewResult) -> str:
         return "Mocked explanation."
+
+
+class BadExplanationProvider:
+    def explain(self, review: ReviewResult) -> str:
+        raise RuntimeError()
 
 
 client = TestClient(app)
@@ -461,7 +467,7 @@ def test_sqlite_database(tmp_path, create_plan):
     response = custom_client.get(f"/reviews/{review_id}/approval")
     assert response.status_code == 200
     expected_record = response.json()
-    
+
     reopened_store = SQLiteReviewStore(database_file)
     reopened_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset()),
@@ -477,3 +483,29 @@ def test_sqlite_database(tmp_path, create_plan):
     reopened_review = reopened_client.get(f"/reviews/{review_id}")
     assert reopened_review.status_code == 200
     assert reopened_review.json() == expected_review
+
+
+def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
+    custom_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset({"public-inbound-access"})),
+        BadExplanationProvider(),
+    )
+    custom_client = TestClient(custom_app)
+
+    logger = logging.getLogger("terraforminator")
+    logger.addHandler(caplog.handler)
+    try:
+        with pytest.raises(RuntimeError):
+            custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
+    finally:
+        logger.removeHandler(caplog.handler)
+
+    record = next(
+        record
+        for record in caplog.records
+        if record.getMessage() == "Review explanation failed"
+    )
+    assert record.levelno == logging.ERROR
+    assert record.exc_info is not None
+    assert record.plan_hash == hash_plan(aws_sg_update_plan)
+    assert record.policy_result == "block"

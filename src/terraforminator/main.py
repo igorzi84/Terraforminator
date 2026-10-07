@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -22,11 +23,13 @@ from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
 from terraforminator.explanation_provider import ExplanationProvider
+from terraforminator.logging_config import configure_logging
 from terraforminator.review_store import InMemoryReviewStore, ReviewStore
 from terraforminator.sqlite_review_store import SQLiteReviewStore
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 POLICY_CONFIG_PATH = CONFIG_DIR / "policies.toml"
+logger = logging.getLogger(__name__)
 
 
 def to_stored_review_response(review: Review) -> StoredReviewResponse:
@@ -86,8 +89,27 @@ def create_app(
             )
             for finding in result.findings
         ]
-        explanation = explanation_provider.explain(result)
+        try:
+            explanation = explanation_provider.explain(result)
+        except Exception:
+            logger.exception(
+                "Review explanation failed",
+                extra={
+                    "review_id": str(review_id),
+                    "plan_hash": plan_hash,
+                    "policy_result": result.decision,
+                },
+            )
+            raise
 
+        logger.info(
+            "Review created",
+            extra={
+                "review_id": str(review_id),
+                "plan_hash": plan_hash,
+                "policy_result": result.decision,
+            },
+        )
         return ReviewResponse(
             review_id=review_id,
             plan_hash=plan_hash,
@@ -133,6 +155,16 @@ def create_app(
             )
 
         review = review_store.get_review(review_id=review_id)
+
+        logger.info(
+            "Human decision recorded",
+            extra={
+                "review_id": str(review.review_id),
+                "plan_hash": review.plan_hash,
+                "policy_result": review.result.decision,
+                "approval_outcome": review.approval_status,
+            },
+        )
         return to_stored_review_response(review)
 
     @app.get("/reviews/{review_id}/approval")
@@ -159,6 +191,7 @@ def create_app(
     return app
 
 
+configure_logging()
 policy_config = load_policy_config(POLICY_CONFIG_PATH)
 settings = load_app_settings()
 review_store = SQLiteReviewStore(settings.database_path)

@@ -7,7 +7,8 @@ review decision with concrete findings.
 It is a local-first portfolio project. The current implementation provides the
 plan-review domain layer, deterministic explanations, and a FastAPI API for
 storing reviews in SQLite, recording human decisions, and retrieving audit
-records. Temporal workflows and observability are planned next.
+records. Structured JSON logs capture completed reviews and saved human
+decisions. Temporal workflows and Prometheus metrics are planned next.
 
 ## Safety boundary
 
@@ -92,6 +93,19 @@ The parent directory must already exist and be writable. SQLite creates the
 database file if it does not exist. Relative paths resolve from the directory
 where you start the server. Empty or whitespace-only values are rejected.
 Database files matching `*.db` are ignored by Git.
+
+### Structured logging
+
+The API writes JSON logs to stderr in the terminal. Each event includes a UTC
+timestamp, log level, logger name, and message.
+
+- `Review created` is emitted after the review is stored and its explanation
+  succeeds. It includes `review_id`, `plan_hash`, and `policy_result`.
+- `Human decision recorded` is emitted after an approval or rejection is saved
+  and the updated review is retrieved. It includes the same review fields plus
+  `approval_outcome` (`approved` or `rejected`).
+
+Failed approval requests do not emit a successful human-decision event.
 
 ## API
 
@@ -201,8 +215,8 @@ Checked-in fixtures under `tests/fixtures/plans/` are fictional and safe to
 commit. They cover both a local Docker plan and a risky public AWS security
 group update. The tests cover parsing, individual policy checks, configuration
 loading, decision rules, the domain pipeline, store isolation, SQLite
-persistence and transaction rollback, and the review and human-decision API
-routes.
+persistence and transaction rollback, the review and human-decision API routes,
+and JSON log formatting with and without review context.
 
 Before committing changes:
 
@@ -215,6 +229,6 @@ git diff --check
 
 - Optional model-backed advisory explanations grounded in policy findings.
 - Temporal human approval workflow and a CI/CD approval gate.
-- Structured logs and Prometheus metrics.
+- Prometheus metrics and a local scraping configuration.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.
