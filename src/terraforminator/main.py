@@ -2,7 +2,8 @@ import logging
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+import prometheus_client
+from fastapi import FastAPI, HTTPException, Response
 
 from terraforminator.api.v1.schemas import (
     ApprovalRecordResponse,
@@ -24,6 +25,7 @@ from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
 from terraforminator.explanation_provider import ExplanationProvider
 from terraforminator.logging_config import configure_logging
+from terraforminator.metrics import ReviewMetrics
 from terraforminator.review_store import InMemoryReviewStore, ReviewStore
 from terraforminator.sqlite_review_store import SQLiteReviewStore
 
@@ -60,6 +62,9 @@ def create_app(
     review_store: ReviewStore | None = None,
 ) -> FastAPI:
     app = FastAPI()
+    metrics = ReviewMetrics()
+    app.state.metrics = metrics
+
     if review_store is None:
         review_store = InMemoryReviewStore()
 
@@ -101,7 +106,7 @@ def create_app(
                 },
             )
             raise
-
+        metrics.record_review(result.decision)
         logger.info(
             "Review created",
             extra={
@@ -154,6 +159,7 @@ def create_app(
                 },
             )
 
+        metrics.record_approval(approval_request.status)
         review = review_store.get_review(review_id=review_id)
 
         logger.info(
@@ -186,6 +192,13 @@ def create_app(
             reviewer=record.reviewer,
             reason=record.reason,
             decided_at=record.decided_at,
+        )
+
+    @app.get("/metrics")
+    def get_metrics() -> Response:
+        return Response(
+            prometheus_client.generate_latest(metrics.registry),
+            headers={"Content-Type": prometheus_client.CONTENT_TYPE_LATEST},
         )
 
     return app

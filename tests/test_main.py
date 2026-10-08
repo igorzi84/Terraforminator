@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
+import prometheus_client
 import pytest
 from fastapi.testclient import TestClient
 
@@ -509,3 +510,101 @@ def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
     assert record.exc_info is not None
     assert record.plan_hash == hash_plan(aws_sg_update_plan)
     assert record.policy_result == "block"
+
+    # Failed explanations must not count as completed reviews.
+    assert (
+        custom_app.state.metrics.registry.get_sample_value(
+            "terraforminator_reviews_total",
+            {"policy_result": "block"},
+        )
+        is None
+    )
+
+
+def test_reviews_metric(create_plan):
+    # Creating an isolated app to get isolated metrics
+    test_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset()),
+        FakeExplanationProvider(),
+    )
+    test_client = TestClient(test_app)
+
+    response = test_client.post("/reviews", json={"plan": create_plan})
+    assert response.status_code == 200
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_reviews_total",
+            {"policy_result": "approve"},
+        )
+        == 1
+    )
+
+
+def test_get_metrics(create_plan):
+    test_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset()),
+        FakeExplanationProvider(),
+    )
+    test_client = TestClient(test_app)
+
+    response = test_client.post("/reviews", json={"plan": create_plan})
+    assert response.status_code == 200
+
+    metrics = test_client.get("/metrics")
+    assert metrics.status_code == 200
+    assert metrics.headers["content-type"] == prometheus_client.CONTENT_TYPE_LATEST
+    assert 'terraforminator_reviews_total{policy_result="approve"} 1.0' in metrics.text
+
+
+def test_approval_metric(create_plan, aws_sg_update_plan):
+    # Creating an isolated app to get isolated metrics
+    test_app = create_app(
+        PolicyConfig(enabled_policy_ids=frozenset()),
+        FakeExplanationProvider(),
+    )
+    test_client = TestClient(test_app)
+
+    response = test_client.post("/reviews", json={"plan": create_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    approved_record = {
+        "status": "approved",
+        "reviewer": "Igor",
+        "reason": "Reason",
+    }
+    response = test_client.post(f"/reviews/{review_id}/approval", json=approved_record)
+    assert response.status_code == 200
+
+    # trying to approve approved record again should rais 409
+    response = test_client.post(f"/reviews/{review_id}/approval", json=approved_record)
+    assert response.status_code == 409
+
+    response = test_client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+    review_id = response.json()["review_id"]
+
+    rejected_record = {
+        "status": "rejected",
+        "reviewer": "Igor",
+        "reason": "Reason",
+    }
+    response = test_client.post(f"/reviews/{review_id}/approval", json=rejected_record)
+    assert response.status_code == 200
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_approval_decisions_total",
+            {"approval_outcome": "approved"},
+        )
+        == 1
+    )
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_approval_decisions_total",
+            {"approval_outcome": "rejected"},
+        )
+        == 1
+    )

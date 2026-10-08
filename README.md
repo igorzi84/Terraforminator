@@ -8,7 +8,8 @@ It is a local-first portfolio project. The current implementation provides the
 plan-review domain layer, deterministic explanations, and a FastAPI API for
 storing reviews in SQLite, recording human decisions, and retrieving audit
 records. Structured JSON logs capture completed reviews and saved human
-decisions. Temporal workflows and Prometheus metrics are planned next.
+decisions. A Prometheus endpoint exposes review and human-decision counters.
+Temporal workflows and a local Prometheus scraping configuration are planned.
 
 ## Safety boundary
 
@@ -106,6 +107,30 @@ timestamp, log level, logger name, and message.
   `approval_outcome` (`approved` or `rejected`).
 
 Failed approval requests do not emit a successful human-decision event.
+
+### Metrics
+
+`GET /metrics` exposes metrics in Prometheus text format:
+
+```bash
+curl --fail-with-body -sS http://127.0.0.1:8000/metrics
+```
+
+| Counter | Label | Values |
+| --- | --- | --- |
+| `terraforminator_reviews_total` | `policy_result` | `approve`, `needs_review`, `block` |
+| `terraforminator_approval_decisions_total` | `approval_outcome` | `approved`, `rejected` |
+
+The review counter increments after storage and explanation succeed. The
+human-decision counter increments after an approval or rejection is saved.
+Invalid requests, failed explanations, and failed approval requests do not
+increment these counters. Policy results and human decisions are counted
+separately; human approval of a blocked review still does not allow deployment.
+
+Each app instance owns its metrics registry. Counters are held in memory and
+reset when the app process restarts; they do not count historical SQLite
+records. A label combination appears after its first recorded event. Review
+IDs and plan hashes stay in logs rather than metric labels.
 
 ## API
 
@@ -216,7 +241,8 @@ commit. They cover both a local Docker plan and a risky public AWS security
 group update. The tests cover parsing, individual policy checks, configuration
 loading, decision rules, the domain pipeline, store isolation, SQLite
 persistence and transaction rollback, the review and human-decision API routes,
-and JSON log formatting with and without review context.
+JSON log formatting with and without review context, isolated metrics registries,
+counter updates, failure exclusions, and the Prometheus endpoint.
 
 Before committing changes:
 
@@ -229,6 +255,7 @@ git diff --check
 
 - Optional model-backed advisory explanations grounded in policy findings.
 - Temporal human approval workflow and a CI/CD approval gate.
-- Prometheus metrics and a local scraping configuration.
+- Review duration, explanation latency, and policy-finding metrics, plus a
+  local Prometheus scraping configuration.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.
