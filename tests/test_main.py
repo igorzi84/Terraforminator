@@ -520,6 +520,14 @@ def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
         is None
     )
 
+    assert (
+        custom_app.state.metrics.registry.get_sample_value(
+            "terraforminator_review_duration_seconds_count",
+            {"policy_result": "block"},
+        )
+        is None
+    )
+
 
 def test_reviews_metric(create_plan):
     # Creating an isolated app to get isolated metrics
@@ -535,6 +543,14 @@ def test_reviews_metric(create_plan):
     assert (
         test_app.state.metrics.registry.get_sample_value(
             "terraforminator_reviews_total",
+            {"policy_result": "approve"},
+        )
+        == 1
+    )
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_review_duration_seconds_count",
             {"policy_result": "approve"},
         )
         == 1

@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -70,6 +71,7 @@ def create_app(
 
     @app.post("/reviews")
     def create_review(request: ReviewRequest) -> ReviewResponse:
+        started_at = time.monotonic()
         review_id = uuid4()
         plan_hash = hash_plan(request.plan)
 
@@ -107,6 +109,8 @@ def create_app(
             )
             raise
         metrics.record_review(result.decision)
+        duration = time.monotonic() - started_at
+        metrics.record_review_duration(result.decision, duration)
         logger.info(
             "Review created",
             extra={

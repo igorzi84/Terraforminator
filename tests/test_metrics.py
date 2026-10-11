@@ -37,3 +37,23 @@ def test_metrics_are_isolated():
         )
         == 1
     )
+
+
+def test_record_review_duration():
+    metrics = ReviewMetrics()
+    metrics.record_review_duration("approve", 0.25)
+
+    assert (
+        metrics.registry.get_sample_value(
+            "terraforminator_review_duration_seconds_count",
+            {"policy_result": "approve"},
+        )
+        == 1
+    )
+
+    assert (
+        metrics.registry.get_sample_value(
+            "terraforminator_review_duration_seconds_sum", {"policy_result": "approve"}
+        )
+        == 0.25
+    )
