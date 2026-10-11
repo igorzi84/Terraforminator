@@ -17,11 +17,15 @@ from terraforminator.sqlite_review_store import SQLiteReviewStore
 
 
 class FakeExplanationProvider:
+    name = "fake provider"
+
     def explain(self, review: ReviewResult) -> str:
         return "Mocked explanation."
 
 
 class BadExplanationProvider:
+    name = "bad provider"
+
     def explain(self, review: ReviewResult) -> str:
         raise RuntimeError()
 
@@ -528,6 +532,14 @@ def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
         is None
     )
 
+    assert (
+        custom_app.state.metrics.registry.get_sample_value(
+            "terraforminator_explanation_duration_seconds_count",
+            {"provider_name": "bad provider"},
+        )
+        is None
+    )
+
 
 def test_reviews_metric(create_plan):
     # Creating an isolated app to get isolated metrics
@@ -552,6 +564,14 @@ def test_reviews_metric(create_plan):
         test_app.state.metrics.registry.get_sample_value(
             "terraforminator_review_duration_seconds_count",
             {"policy_result": "approve"},
+        )
+        == 1
+    )
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_explanation_duration_seconds_count",
+            {"provider_name": "fake provider"},
         )
         == 1
     )

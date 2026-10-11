@@ -57,3 +57,23 @@ def test_record_review_duration():
         )
         == 0.25
     )
+
+
+def test_record_explanation_duration():
+    metrics = ReviewMetrics()
+    metrics.record_explanation_duration("chatGPT", 0.25)
+
+    assert (
+        metrics.registry.get_sample_value(
+            "terraforminator_explanation_duration_seconds_count",
+            {"provider_name": "chatGPT"},
+        )
+        == 1
+    )
+
+    assert (
+        metrics.registry.get_sample_value(
+            "terraforminator_explanation_duration_seconds_sum", {"provider_name": "chatGPT"}
+        )
+        == 0.25
+    )

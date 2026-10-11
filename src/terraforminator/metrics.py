@@ -28,6 +28,13 @@ class ReviewMetrics:
             registry=self.registry,
         )
 
+        self.explanation_duration = Histogram(
+            "terraforminator_explanation_duration_seconds",
+            "AI explanation duration",
+            labelnames=("provider_name",),
+            registry=self.registry,
+        )
+
     def record_review(self, policy_result: ReviewDecision) -> None:
         self.reviews_total.labels(policy_result=policy_result).inc()
 
@@ -38,3 +45,6 @@ class ReviewMetrics:
         self, policy_result: ReviewDecision, seconds: float
     ) -> None:
         self.review_duration.labels(policy_result=policy_result).observe(seconds)
+
+    def record_explanation_duration(self, provider_name: str, seconds: float) -> None:
+        self.explanation_duration.labels(provider_name=provider_name).observe(seconds)

@@ -97,7 +97,12 @@ def create_app(
             for finding in result.findings
         ]
         try:
+            explanation_started_at = time.monotonic()
             explanation = explanation_provider.explain(result)
+            metrics.record_explanation_duration(
+                provider_name=explanation_provider.name,
+                seconds=time.monotonic() - explanation_started_at,
+            )
         except Exception:
             logger.exception(
                 "Review explanation failed",

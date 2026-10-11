@@ -3,5 +3,7 @@ from terraforminator.domain.models import ReviewResult
 
 
 class DeterministicExplanationProvider:
+    name = "deterministic"
+
     def explain(self, review: ReviewResult) -> str:
         return explain_review(review)
