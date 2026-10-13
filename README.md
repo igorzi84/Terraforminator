@@ -9,8 +9,8 @@ plan-review domain layer, deterministic explanations, and a FastAPI API for
 storing reviews in SQLite, recording human decisions, and retrieving audit
 records. Structured JSON logs capture completed reviews and saved human
 decisions. A Prometheus endpoint exposes review and human-decision counters,
-review duration, and explanation latency.
-Temporal workflows and a local Prometheus scraping configuration are planned.
+review duration, and explanation latency. Docker Compose runs the API alongside
+Prometheus for local metric collection. Temporal workflows are planned.
 
 ## Safety boundary
 
@@ -116,6 +116,42 @@ container, and run the same command again. Fetch
 The named volume is managed by Docker. On macOS with Docker Desktop, it lives
 inside Docker's Linux VM rather than in the repository. Inspect it with
 `docker volume inspect terraforminator-data`.
+
+### Run with Docker Compose and Prometheus
+
+From the repository root, start the API and Prometheus together:
+
+```bash
+docker compose up --build
+```
+
+Stop any API already using port `8000` before starting Compose. Both services
+publish ports only on localhost:
+
+- API documentation: `http://127.0.0.1:8000/docs`
+- API metrics: `http://127.0.0.1:8000/metrics`
+- Prometheus UI: `http://127.0.0.1:9090`
+
+[`config/prometheus.yml`](config/prometheus.yml) configures Prometheus to scrape
+`api:8000` every 15 seconds. The `api` hostname is the Compose service name;
+Prometheus reaches it through the shared container network.
+
+Open `http://127.0.0.1:9090/targets` and confirm the `terraforminator` target is
+**UP**. Then create a review through the API, wait about 15 seconds, and execute
+this query at `http://127.0.0.1:9090/query`:
+
+```promql
+terraforminator_reviews_total
+```
+
+The counter for the review's `policy_result` should increase by one. Before the
+first successfully completed review, this query may return no data.
+
+Compose mounts a named volume at `/data` to retain SQLite records. The current
+Compose configuration does not define a named volume for Prometheus history.
+
+Press Ctrl+C to stop the services, or run `docker compose down` to stop and
+remove their containers and network while retaining the SQLite named volume.
 
 ### Host configuration
 
@@ -316,6 +352,6 @@ git diff --check
 
 - Optional model-backed advisory explanations grounded in policy findings.
 - Temporal human approval workflow and a CI/CD approval gate.
-- Policy-finding metrics and a local Prometheus scraping configuration.
+- Policy-finding metrics.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.
