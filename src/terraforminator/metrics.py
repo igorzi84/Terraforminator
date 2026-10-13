@@ -1,6 +1,6 @@
 from prometheus_client import CollectorRegistry, Counter, Histogram
 
-from terraforminator.domain.models import ApprovalDecision, ReviewDecision
+from terraforminator.domain.models import ApprovalDecision, Finding, ReviewDecision
 
 
 class ReviewMetrics:
@@ -35,6 +35,13 @@ class ReviewMetrics:
             registry=self.registry,
         )
 
+        self.policy_findings_total = Counter(
+            "terraforminator_policy_findings_total",
+            "Total policy findings",
+            labelnames=("policy_id", "severity"),
+            registry=self.registry,
+        )
+
     def record_review(self, policy_result: ReviewDecision) -> None:
         self.reviews_total.labels(policy_result=policy_result).inc()
 
@@ -48,3 +55,8 @@ class ReviewMetrics:
 
     def record_explanation_duration(self, provider_name: str, seconds: float) -> None:
         self.explanation_duration.labels(provider_name=provider_name).observe(seconds)
+
+    def record_policy_findings(self, finding: Finding) -> None:
+        self.policy_findings_total.labels(
+            policy_id=finding.id, severity=finding.severity
+        ).inc()

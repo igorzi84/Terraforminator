@@ -8,7 +8,7 @@ It is a local-first portfolio project. The current implementation provides the
 plan-review domain layer, deterministic explanations, and a FastAPI API for
 storing reviews in SQLite, recording human decisions, and retrieving audit
 records. Structured JSON logs capture completed reviews and saved human
-decisions. A Prometheus endpoint exposes review and human-decision counters,
+decisions. A Prometheus endpoint exposes review, policy-finding, and human-decision counters,
 review duration, and explanation latency. Docker Compose runs the API alongside
 Prometheus for local metric collection. Temporal workflows are planned.
 
@@ -205,6 +205,7 @@ curl --fail-with-body -sS http://127.0.0.1:8000/metrics
 | Metric | Type | Label | Values |
 | --- | --- | --- | --- |
 | `terraforminator_reviews_total` | Counter | `policy_result` | `approve`, `needs_review`, `block` |
+| `terraforminator_policy_findings_total` | Counter | `policy_id`, `severity` | Policy IDs listed above; severity `low`, `medium`, or `high` |
 | `terraforminator_approval_decisions_total` | Counter | `approval_outcome` | `approved`, `rejected` |
 | `terraforminator_review_duration_seconds` | Histogram | `policy_result` | `approve`, `needs_review`, `block` |
 | `terraforminator_explanation_duration_seconds` | Histogram | `provider_name` | `deterministic` for the current provider |
@@ -214,6 +215,12 @@ human-decision counter increments after an approval or rejection is saved.
 Invalid requests, failed explanations, and failed approval requests do not
 increment these counters. Policy results and human decisions are counted
 separately; human approval of a blocked review still does not allow deployment.
+
+The policy-finding counter increments once per finding after review storage and
+explanation succeed. Multiple findings in a review are counted separately,
+including findings with the same policy ID and severity on different resources.
+Reviews without findings and failed reviews do not increment it. Resource
+addresses are kept out of metric labels.
 
 Review duration measures elapsed time from the start of the review handler
 through parsing, policy evaluation, storage, and explanation. Explanation
@@ -338,7 +345,8 @@ group update. The tests cover parsing, individual policy checks, configuration
 loading, decision rules, the domain pipeline, store isolation, SQLite
 persistence and transaction rollback, the review and human-decision API routes,
 JSON log formatting with and without review context, isolated metrics registries,
-counter updates, duration histogram counts and sums, failure exclusions, and
+counter updates, policy-finding counts and failed-explanation exclusions,
+duration histogram counts and sums, failure exclusions, and
 the Prometheus endpoint.
 
 Before committing changes:
@@ -352,6 +360,5 @@ git diff --check
 
 - Optional model-backed advisory explanations grounded in policy findings.
 - Temporal human approval workflow and a CI/CD approval gate.
-- Policy-finding metrics.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.

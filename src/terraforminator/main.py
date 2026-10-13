@@ -97,6 +97,7 @@ def create_app(
             )
             for finding in result.findings
         ]
+
         try:
             explanation_started_at = time.monotonic()
             explanation = explanation_provider.explain(result)
@@ -115,6 +116,8 @@ def create_app(
             )
             raise
         metrics.record_review(result.decision)
+        for finding in result.findings:
+            metrics.record_policy_findings(finding)
         duration = time.monotonic() - started_at
         metrics.record_review_duration(result.decision, duration)
         logger.info(

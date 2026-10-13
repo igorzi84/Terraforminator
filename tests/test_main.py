@@ -645,3 +645,37 @@ def test_approval_metric(create_plan, aws_sg_update_plan):
         )
         == 1
     )
+
+
+def test_record_findings(aws_sg_update_plan):
+    test_app = create_app(
+        PolicyConfig(),
+        FakeExplanationProvider(),
+    )
+    test_client = TestClient(test_app)
+    test_client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_policy_findings_total",
+            {"policy_id": "public-inbound-access", "severity": "high"},
+        )
+        == 1
+    )
+
+
+def test_record_findings_absent_on_error(aws_sg_update_plan):
+    test_app = create_app(
+        PolicyConfig(),
+        BadExplanationProvider(),
+    )
+    test_client = TestClient(test_app)
+    with pytest.raises(RuntimeError):
+        test_client.post("/reviews", json={"plan": aws_sg_update_plan})
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_policy_findings_total",
+            {"policy_id": "public-inbound-access", "severity": "high"},
+        )
+        is None
+    )
