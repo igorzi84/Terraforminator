@@ -82,6 +82,41 @@ uv run terraforminator
 The API is available at `http://127.0.0.1:8000`. FastAPI also exposes
 interactive documentation at `/docs`.
 
+### Run with Docker
+
+With Docker running, build the image from the repository root:
+
+```bash
+docker build -t terraforminator .
+```
+
+Start the API with a named volume for SQLite storage:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:8000:8000 \
+  -v terraforminator-data:/data \
+  terraforminator
+```
+
+Open `http://127.0.0.1:8000/docs` to try the API, or `/metrics` to view
+Prometheus output. The app listens on `0.0.0.0:8000` inside the container;
+Docker publishes the port only on your computer's localhost.
+
+The image sets `TERRAFORMINATOR_DB_PATH=/data/terraforminator.db`. Docker
+creates the named volume automatically and reuses it on subsequent runs.
+Press Ctrl+C to stop the API. `--rm` removes the container after it exits,
+but the named volume retains reviews and approval records.
+
+To verify persistence, create a review through `POST /reviews` with the plan
+JSON wrapped in a `plan` field. Save the returned `review_id`, stop the
+container, and run the same command again. Fetch
+`GET /reviews/{review_id}` to confirm the review is still available.
+
+The named volume is managed by Docker. On macOS with Docker Desktop, it lives
+inside Docker's Linux VM rather than in the repository. Inspect it with
+`docker volume inspect terraforminator-data`.
+
 ### Host configuration
 
 The API listens on `127.0.0.1:8000` by default. Set `TERRAFORMINATOR_HOST`

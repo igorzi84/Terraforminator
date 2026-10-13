@@ -1,0 +1,12 @@
+.venv/
+.git/
+__pycache__/
+.pytest_cache/
+*.db*
+.env
+.agents/
+terraform/
+tests/
+.gitignore
+.pre-commit-config.yaml
+AGENTS.md
