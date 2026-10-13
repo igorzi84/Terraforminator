@@ -28,3 +28,25 @@ def test_empty_path_variable(monkeypatch, path):
 
     with pytest.raises(ValueError):
         load_app_settings()
+
+
+def test_unset_host_variable(monkeypatch):
+    monkeypatch.delenv("TERRAFORMINATOR_HOST", raising=False)
+
+    settings = load_app_settings()
+    assert settings.host == "127.0.0.1"
+
+
+def test_whitespace_host(monkeypatch):
+    monkeypatch.setenv("TERRAFORMINATOR_HOST", " 0.0.0.0 ")
+
+    settings = load_app_settings()
+    assert settings.host == "0.0.0.0"
+
+
+@pytest.mark.parametrize("host", ["", " "])
+def test_empty_unset_host(monkeypatch, host):
+    monkeypatch.setenv("TERRAFORMINATOR_HOST", host)
+
+    with pytest.raises(ValueError):
+        load_app_settings()

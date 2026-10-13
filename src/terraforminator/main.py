@@ -4,6 +4,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import prometheus_client
+import uvicorn
 from fastapi import FastAPI, HTTPException, Response
 
 from terraforminator.api.v1.schemas import (
@@ -213,11 +214,13 @@ def create_app(
     return app
 
 
-configure_logging()
-policy_config = load_policy_config(POLICY_CONFIG_PATH)
-settings = load_app_settings()
-review_store = SQLiteReviewStore(settings.database_path)
+def main() -> None:
+    configure_logging()
+    policy_config = load_policy_config(POLICY_CONFIG_PATH)
+    settings = load_app_settings()
+    review_store = SQLiteReviewStore(settings.database_path)
 
-app = create_app(
-    policy_config, DeterministicExplanationProvider(), review_store=review_store
-)
+    app = create_app(
+        policy_config, DeterministicExplanationProvider(), review_store=review_store
+    )
+    uvicorn.run(app, host=settings.host, port=8000)

@@ -11,6 +11,7 @@ ROOT_DIR = Path(__file__).parent.parent.parent
 @dataclass
 class AppSettings:
     database_path: Path
+    host: str
 
 
 def load_app_settings() -> AppSettings:
@@ -21,7 +22,14 @@ def load_app_settings() -> AppSettings:
             raise ValueError("TERRAFORMINATOR_DB_PATH must not be blank")
         database_path = Path(database_path_str)
 
-    settings = AppSettings(database_path=database_path)
+    host = "127.0.0.1"
+    terraforminator_host = os.getenv("TERRAFORMINATOR_HOST")
+    if terraforminator_host is not None:
+        if not terraforminator_host.strip():
+            raise ValueError("TERRAFORMINATOR_HOST must not be blank")
+        host = terraforminator_host.strip()
+
+    settings = AppSettings(database_path=database_path, host=host)
 
     return settings
 

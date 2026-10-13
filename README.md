@@ -8,7 +8,8 @@ It is a local-first portfolio project. The current implementation provides the
 plan-review domain layer, deterministic explanations, and a FastAPI API for
 storing reviews in SQLite, recording human decisions, and retrieving audit
 records. Structured JSON logs capture completed reviews and saved human
-decisions. A Prometheus endpoint exposes review and human-decision counters.
+decisions. A Prometheus endpoint exposes review and human-decision counters,
+review duration, and explanation latency.
 Temporal workflows and a local Prometheus scraping configuration are planned.
 
 ## Safety boundary
@@ -75,11 +76,25 @@ uv run pytest
 Start the API:
 
 ```bash
-uv run fastapi dev src/terraforminator/main.py
+uv run terraforminator
 ```
 
 The API is available at `http://127.0.0.1:8000`. FastAPI also exposes
 interactive documentation at `/docs`.
+
+### Host configuration
+
+The API listens on `127.0.0.1:8000` by default. Set `TERRAFORMINATOR_HOST`
+to change the bind address, for example when running inside a container:
+
+```bash
+TERRAFORMINATOR_HOST=0.0.0.0 uv run terraforminator
+```
+
+`0.0.0.0` listens on all IPv4 interfaces. Inside a container, this allows
+connections through a published Docker port. The port remains fixed at `8000`.
+Surrounding whitespace is trimmed; empty or whitespace-only host values are
+rejected.
 
 ### Database configuration
 
@@ -87,7 +102,7 @@ The local API defaults to `terraforminator.db` in the repository root. Set
 `TERRAFORMINATOR_DB_PATH` to use a different database file:
 
 ```bash
-TERRAFORMINATOR_DB_PATH=/tmp/terraforminator.db uv run fastapi dev src/terraforminator/main.py
+TERRAFORMINATOR_DB_PATH=/tmp/terraforminator.db uv run terraforminator
 ```
 
 The parent directory must already exist and be writable. SQLite creates the
@@ -116,10 +131,12 @@ Failed approval requests do not emit a successful human-decision event.
 curl --fail-with-body -sS http://127.0.0.1:8000/metrics
 ```
 
-| Counter | Label | Values |
-| --- | --- | --- |
-| `terraforminator_reviews_total` | `policy_result` | `approve`, `needs_review`, `block` |
-| `terraforminator_approval_decisions_total` | `approval_outcome` | `approved`, `rejected` |
+| Metric | Type | Label | Values |
+| --- | --- | --- | --- |
+| `terraforminator_reviews_total` | Counter | `policy_result` | `approve`, `needs_review`, `block` |
+| `terraforminator_approval_decisions_total` | Counter | `approval_outcome` | `approved`, `rejected` |
+| `terraforminator_review_duration_seconds` | Histogram | `policy_result` | `approve`, `needs_review`, `block` |
+| `terraforminator_explanation_duration_seconds` | Histogram | `provider_name` | `deterministic` for the current provider |
 
 The review counter increments after storage and explanation succeed. The
 human-decision counter increments after an approval or rejection is saved.
@@ -127,7 +144,15 @@ Invalid requests, failed explanations, and failed approval requests do not
 increment these counters. Policy results and human decisions are counted
 separately; human approval of a blocked review still does not allow deployment.
 
-Each app instance owns its metrics registry. Counters are held in memory and
+Review duration measures elapsed time from the start of the review handler
+through parsing, policy evaluation, storage, and explanation. Explanation
+latency measures only the provider's `explain()` call. Both use a monotonic
+clock and record successful operations only; a failed explanation records
+neither duration. Histograms expose `_bucket`, `_count`, and `_sum` samples,
+with durations measured in seconds. Provider labels use the provider's explicit,
+stable `name`.
+
+Each app instance owns its metrics registry. Metrics are held in memory and
 reset when the app process restarts; they do not count historical SQLite
 records. A label combination appears after its first recorded event. Review
 IDs and plan hashes stay in logs rather than metric labels.
@@ -242,7 +267,8 @@ group update. The tests cover parsing, individual policy checks, configuration
 loading, decision rules, the domain pipeline, store isolation, SQLite
 persistence and transaction rollback, the review and human-decision API routes,
 JSON log formatting with and without review context, isolated metrics registries,
-counter updates, failure exclusions, and the Prometheus endpoint.
+counter updates, duration histogram counts and sums, failure exclusions, and
+the Prometheus endpoint.
 
 Before committing changes:
 
@@ -255,7 +281,6 @@ git diff --check
 
 - Optional model-backed advisory explanations grounded in policy findings.
 - Temporal human approval workflow and a CI/CD approval gate.
-- Review duration, explanation latency, and policy-finding metrics, plus a
-  local Prometheus scraping configuration.
+- Policy-finding metrics and a local Prometheus scraping configuration.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.

@@ -11,7 +11,7 @@ from terraforminator.deterministic_explanation_provider import (
 )
 from terraforminator.domain.models import PolicyConfig, ReviewResult
 from terraforminator.domain.plan_hash import hash_plan
-from terraforminator.main import app, create_app
+from terraforminator.main import create_app
 from terraforminator.review_store import InMemoryReviewStore
 from terraforminator.sqlite_review_store import SQLiteReviewStore
 
@@ -30,6 +30,7 @@ class BadExplanationProvider:
         raise RuntimeError()
 
 
+app = create_app(PolicyConfig(), DeterministicExplanationProvider())
 client = TestClient(app)
 
 
