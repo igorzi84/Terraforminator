@@ -1,5 +1,12 @@
+storage:
+  tsdb:
+    retention:
+      time: 1d
+      size: 256MB
+
 global:
   scrape_interval: 15s
+
 scrape_configs:
   - job_name: terraforminator
     static_configs:

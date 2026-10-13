@@ -11,5 +11,7 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
 volumes:
   terraforminator-data:
+  prometheus-data:

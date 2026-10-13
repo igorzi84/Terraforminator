@@ -147,11 +147,18 @@ terraforminator_reviews_total
 The counter for the review's `policy_result` should increase by one. Before the
 first successfully completed review, this query may return no data.
 
-Compose mounts a named volume at `/data` to retain SQLite records. The current
-Compose configuration does not define a named volume for Prometheus history.
+Compose mounts `terraforminator-data` at `/data` to retain SQLite records and
+`prometheus-data` at `/prometheus` to retain metric history across container
+recreation.
+
+The Prometheus configuration sets retention to one day (`1d`) and a size
+threshold of `256MB`. Whichever limit triggers first determines removal of old
+storage blocks. The size threshold is not a strict cap on total disk usage:
+recent data, the write-ahead log, and temporary compaction files can require
+additional space.
 
 Press Ctrl+C to stop the services, or run `docker compose down` to stop and
-remove their containers and network while retaining the SQLite named volume.
+remove their containers and network while retaining both named volumes.
 
 ### Host configuration
 
