@@ -11,7 +11,14 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        for field in ("review_id", "plan_hash", "policy_result", "approval_outcome"):
+        for field in (
+            "review_id",
+            "plan_hash",
+            "policy_result",
+            "approval_outcome",
+            "workflow_id",
+            "requested_approval_status",
+        ):
             value = getattr(record, field, None)
             if value is not None:
                 log_data[field] = value

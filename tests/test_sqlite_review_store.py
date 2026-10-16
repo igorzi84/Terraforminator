@@ -225,3 +225,42 @@ def test_rollback(database_file):
     # Approval record shouldnt exist (rollback)
     with pytest.raises(KeyError):
         reopened_store.get_record(review.review_id)
+
+
+@pytest.mark.parametrize("status", ["approved", "rejected"])
+def test_identical_approval_retry(database_file, status):
+    review_id = uuid4()
+    store = SQLiteReviewStore(database_file)
+
+    finding = Finding(
+        id="public-inbound-access",
+        severity="high",
+        resource_address="aws_security_group.web",
+        evidence="ingress.cidr_blocks contains 0.0.0.0/0",
+        remediation="Restrict ingress to approved networks.",
+    )
+    review = Review(
+        review_id=review_id,
+        result=ReviewResult(
+            decision="block",
+            findings=(finding,),
+        ),
+        approval_status="pending",
+        plan_hash="hash",
+    )
+    store.save_review(review)
+    record = ApprovalRecord(
+        review_id=review_id,
+        status=status,
+        reviewer="Igor",
+        reason="Reason",
+    )
+    store.save_approval(record)
+
+    # Trying to save the same approval record again
+    review_after_first_save = store.get_review(review_id)
+    store.save_approval(record)
+
+    reopened_store = SQLiteReviewStore(database_file)
+    assert reopened_store.get_record(review_id) == record
+    assert reopened_store.get_review(review_id) == review_after_first_save

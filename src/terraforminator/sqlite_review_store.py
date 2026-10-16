@@ -144,7 +144,31 @@ class SQLiteReviewStore:
             if row is None:
                 raise KeyError(record.review_id)
             if row[0] != "pending":
-                raise ValueError("Review is not pending")
+                existing_row = conn.execute(
+                    """
+                    SELECT review_id, status, reviewer, reason, decided_at
+                    FROM approval_records
+                    WHERE review_id = ?
+                    """,
+                    (str(record.review_id),),
+                ).fetchone()
+
+                if existing_row is None:
+                    raise ValueError("Finalized review has no approval record")
+
+                existing_record = ApprovalRecord(
+                    review_id=UUID(existing_row[0]),
+                    status=existing_row[1],
+                    reviewer=existing_row[2],
+                    reason=existing_row[3],
+                    decided_at=datetime.fromisoformat(existing_row[4]),
+                )
+
+                if record == existing_record:
+                    conn.commit()
+                    return
+                else:
+                    raise ValueError("Review is not pending")
 
             conn.execute(
                 """

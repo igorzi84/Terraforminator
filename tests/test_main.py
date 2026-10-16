@@ -1,19 +1,28 @@
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import prometheus_client
 import pytest
 from fastapi.testclient import TestClient
 
+from terraforminator.config import AppSettings
 from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
-from terraforminator.domain.models import PolicyConfig, ReviewResult
+from terraforminator.domain.models import (
+    ApprovalRecord,
+    PolicyConfig,
+    ReviewResult,
+)
 from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.main import create_app
 from terraforminator.review_store import InMemoryReviewStore
 from terraforminator.sqlite_review_store import SQLiteReviewStore
+from terraforminator.temporal.activities.approval import ApprovalActivities
+from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
 
 
 class FakeExplanationProvider:
@@ -30,8 +39,126 @@ class BadExplanationProvider:
         raise RuntimeError()
 
 
-app = create_app(PolicyConfig(), DeterministicExplanationProvider())
+class FakeApprovalWorkflowStarter:
+    def __init__(self):
+        self.inputs: list[ApprovalWorkflowInput] = []
+        self.decisions: list[ApprovalRecord] = []
+
+    async def start(self, input: ApprovalWorkflowInput) -> str:
+        self.inputs.append(input)
+        return "workflow_id"
+
+    async def record_decision(self, approval_record: ApprovalRecord) -> None:
+        self.decisions.append(approval_record)
+
+
+class BadApprovalWorkflowStarter:
+    async def start(self, input: ApprovalWorkflowInput) -> str:
+        raise RuntimeError("Temporal unavailable")
+
+    async def record_decision(self, approval_record: ApprovalRecord) -> None:
+        raise RuntimeError("Temporal unavailable")
+
+
+TEST_SETTINGS = AppSettings(
+    database_path=Path("unused-test.db"),
+    host="127.0.0.1",
+    temporal_address="temporal.test:7233",
+)
+
+
+app = create_app(
+    PolicyConfig(),
+    DeterministicExplanationProvider(),
+    settings=TEST_SETTINGS,
+    workflow_starter=FakeApprovalWorkflowStarter(),
+)
 client = TestClient(app)
+
+
+@pytest.fixture
+def approval_store():
+    return InMemoryReviewStore()
+
+
+@pytest.fixture
+def approval_client(approval_store):
+    starter = FakeApprovalWorkflowStarter()
+    test_app = create_app(
+        PolicyConfig(),
+        DeterministicExplanationProvider(),
+        settings=TEST_SETTINGS,
+        review_store=approval_store,
+        workflow_starter=starter,
+    )
+    with TestClient(test_app) as test_client:
+        yield test_client, starter
+
+
+def test_lifespan_reuses_temporal_client(monkeypatch, create_plan):
+    temporal_client = Mock()
+    temporal_client.start_workflow = AsyncMock(return_value=Mock(id="workflow_id"))
+    connect = AsyncMock(return_value=temporal_client)
+    monkeypatch.setattr("terraforminator.main.Client.connect", connect)
+    test_app = create_app(
+        PolicyConfig(), FakeExplanationProvider(), settings=TEST_SETTINGS
+    )
+
+    with TestClient(test_app) as test_client:
+        connect.assert_awaited_once_with(TEST_SETTINGS.temporal_address)
+        for _ in range(2):
+            response = test_client.post("/reviews", json={"plan": create_plan})
+            assert response.status_code == 200
+            body = response.json()
+            assert temporal_client.start_workflow.await_args.args[1] == (
+                ApprovalWorkflowInput(
+                    review_id=body["review_id"], policy_result=body["decision"]
+                )
+            )
+            assert temporal_client.start_workflow.await_args.kwargs["id"] == (
+                f"approval-{body['review_id']}"
+            )
+
+    connect.assert_awaited_once()
+    assert temporal_client.start_workflow.await_count == 2
+
+
+def test_lifespan_uses_injected_starter(monkeypatch, create_plan):
+    connect = AsyncMock(side_effect=AssertionError("Unexpected Temporal connection"))
+    monkeypatch.setattr("terraforminator.main.Client.connect", connect)
+    starter = FakeApprovalWorkflowStarter()
+    test_app = create_app(
+        PolicyConfig(),
+        FakeExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=starter,
+    )
+
+    with TestClient(test_app) as test_client:
+        response = test_client.post("/reviews", json={"plan": create_plan})
+        assert response.status_code == 200
+        body = response.json()
+
+    connect.assert_not_awaited()
+    assert starter.inputs == [
+        ApprovalWorkflowInput(
+            review_id=body["review_id"], policy_result=body["decision"]
+        )
+    ]
+
+
+def test_lifespan_connection_failure_prevents_startup(monkeypatch):
+    connect = AsyncMock(side_effect=RuntimeError("Temporal unavailable"))
+    monkeypatch.setattr("terraforminator.main.Client.connect", connect)
+    test_app = create_app(
+        PolicyConfig(), FakeExplanationProvider(), settings=TEST_SETTINGS
+    )
+
+    with pytest.raises(RuntimeError, match="Temporal unavailable"):
+        with TestClient(test_app):
+            pytest.fail("App started despite a failed Temporal connection")
+
+    connect.assert_awaited_once_with(TEST_SETTINGS.temporal_address)
 
 
 def test_create_review_approve(create_plan):
@@ -72,7 +199,10 @@ def test_custom_app_approve(aws_sg_update_plan):
     """We are using custom app with empty policy config, so it shouldnt block anything"""
 
     custom_app = create_app(
-        PolicyConfig(enabled_policy_ids=frozenset()), DeterministicExplanationProvider()
+        PolicyConfig(enabled_policy_ids=frozenset()),
+        DeterministicExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     custom_client = TestClient(custom_app)
 
@@ -135,6 +265,8 @@ def test_fake_explanation_provider(aws_sg_update_plan):
     custom_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset({"public-inbound-access"})),
         FakeExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     custom_client = TestClient(custom_app)
     finding = {
@@ -209,7 +341,8 @@ def test_get_unknown_uuid():
 
 
 @pytest.mark.parametrize("status", ["approved", "rejected"])
-def test_record_human_decision(aws_sg_update_plan, status):
+def test_record_human_decision(aws_sg_update_plan, status, approval_client):
+    client, starter = approval_client
     finding = {
         "id": "public-inbound-access",
         "severity": "high",
@@ -225,15 +358,23 @@ def test_record_human_decision(aws_sg_update_plan, status):
         f"/reviews/{review_id}/approval",
         json={"status": status, "reviewer": "Igor", "reason": "Reason"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     review = response.json()
     assert review["review_id"] == review_id
     assert review["findings"] == [finding]
     assert review["decision"] == "block"
-    assert review["approval_status"] == status
+    assert review["approval_status"] == "pending"
+    assert review["can_deploy"] is False
+    assert len(starter.decisions) == 1
+    record = starter.decisions[0]
+    assert str(record.review_id) == review_id
+    assert record.status == status
+    assert record.reviewer == "Igor"
+    assert record.reason == "Reason"
+    assert record.decided_at.utcoffset() == timedelta(0)
 
-    # Verify update persisted in memory
+    # Sending a signal does not execute the persistence activity.
     response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
 
@@ -241,10 +382,12 @@ def test_record_human_decision(aws_sg_update_plan, status):
     assert review["review_id"] == review_id
     assert review["findings"] == [finding]
     assert review["decision"] == "block"
-    assert review["approval_status"] == status
+    assert review["approval_status"] == "pending"
+    assert client.get(f"/reviews/{review_id}/approval").status_code == 404
 
 
-def test_duplicate_approve_review(aws_sg_update_plan):
+def test_duplicate_approve_review(aws_sg_update_plan, approval_client, approval_store):
+    client, starter = approval_client
     finding = {
         "id": "public-inbound-access",
         "severity": "high",
@@ -263,13 +406,15 @@ def test_duplicate_approve_review(aws_sg_update_plan):
         f"/reviews/{review_id}/approval",
         json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     review = response.json()
     assert review["review_id"] == review_id
     assert review["findings"] == [finding]
     assert review["decision"] == "block"
-    assert review["approval_status"] == "approved"
+    assert review["approval_status"] == "pending"
+    # Explicitly simulate the worker persisting the first signal.
+    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
 
     # Try to approve again with different status
     response = client.post(
@@ -278,6 +423,9 @@ def test_duplicate_approve_review(aws_sg_update_plan):
     )
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "review_not_pending"
+    assert len(starter.decisions) == 1
+    assert str(starter.decisions[0].review_id) == review_id
+    assert starter.decisions[0].status == "approved"
 
     # Get the review and verify it didnt change
     response = client.get(f"/reviews/{review_id}")
@@ -290,7 +438,8 @@ def test_duplicate_approve_review(aws_sg_update_plan):
     assert review["approval_status"] == "approved"
 
 
-def test_approval_with_unknown_uuid():
+def test_approval_with_unknown_uuid(approval_client):
+    client, starter = approval_client
     review_id = uuid4()
     response = client.post(
         f"/reviews/{review_id}/approval",
@@ -298,6 +447,7 @@ def test_approval_with_unknown_uuid():
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "review_not_found"
+    assert starter.decisions == []
 
 
 @pytest.mark.parametrize(
@@ -311,7 +461,7 @@ def test_approval_with_unknown_uuid():
     ],
 )
 def test_invalid_approval_input(
-    aws_sg_update_plan, status, reviewer, reason, error_type, field
+    aws_sg_update_plan, status, reviewer, reason, error_type, field, approval_client
 ):
     """
     1. Verifies "pending" is rejected
@@ -320,6 +470,7 @@ def test_invalid_approval_input(
     4. Verifies error on empty reason
     5. Verifies whitespace only reason
     """
+    client, starter = approval_client
     response = client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
     review_id = response.json()["review_id"]
@@ -332,9 +483,11 @@ def test_invalid_approval_input(
     detail = response.json()["detail"][0]
     assert detail["type"] == error_type
     assert detail["loc"] == ["body", field]
+    assert starter.decisions == []
 
 
-def test_get_approval_record(aws_sg_update_plan):
+def test_get_approval_record(aws_sg_update_plan, approval_client, approval_store):
+    client, starter = approval_client
     response = client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
     review_id = response.json()["review_id"]
@@ -343,12 +496,14 @@ def test_get_approval_record(aws_sg_update_plan):
         f"/reviews/{review_id}/approval",
         json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     review = response.json()
     assert review["review_id"] == review_id
     assert review["decision"] == "block"
-    assert review["approval_status"] == "approved"
+    assert review["approval_status"] == "pending"
+    assert client.get(f"/reviews/{review_id}/approval").status_code == 404
+    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
 
     response = client.get(f"/reviews/{review_id}/approval")
     assert response.status_code == 200
@@ -392,7 +547,8 @@ def test_pending_review_can_deploy_false(aws_sg_update_plan):
     assert response.json()["can_deploy"] is False
 
 
-def test_blocked_review_can_deploy_false(aws_sg_update_plan):
+def test_blocked_review_can_deploy_false(aws_sg_update_plan, approval_client, approval_store):
+    client, starter = approval_client
     """Test blocked review can_deploy = False even if approved by human"""
     response = client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
@@ -403,11 +559,18 @@ def test_blocked_review_can_deploy_false(aws_sg_update_plan):
         f"/reviews/{review_id}/approval",
         json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
     )
+    assert response.status_code == 202
+    assert response.json()["can_deploy"] is False
+
+    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
+    response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
+    assert response.json()["approval_status"] == "approved"
     assert response.json()["can_deploy"] is False
 
 
-def test_approved_review_can_deploy(create_plan):
+def test_approved_review_can_deploy(create_plan, approval_client, approval_store):
+    client, starter = approval_client
     """Test approved review can_deploy = True"""
     response = client.post("/reviews", json={"plan": create_plan})
     assert response.status_code == 200
@@ -423,8 +586,10 @@ def test_approved_review_can_deploy(create_plan):
         f"/reviews/{review_id}/approval",
         json={"status": "approved", "reviewer": "Igor", "reason": "Reason"},
     )
-    assert response.status_code == 200
-    assert response.json()["can_deploy"] is True
+    assert response.status_code == 202
+    assert response.json()["can_deploy"] is False
+
+    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
 
     response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
@@ -436,7 +601,9 @@ def test_supplied_store(create_plan):
     custom_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset()),
         DeterministicExplanationProvider(),
-        review_store,
+        review_store=review_store,
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     custom_client = TestClient(custom_app)
 
@@ -452,10 +619,13 @@ def test_supplied_store(create_plan):
 def test_sqlite_database(tmp_path, create_plan):
     database_file = tmp_path / "reviews.db"
     review_store = SQLiteReviewStore(database_file)
+    starter = FakeApprovalWorkflowStarter()
     custom_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset()),
         DeterministicExplanationProvider(),
-        review_store,
+        review_store=review_store,
+        settings=TEST_SETTINGS,
+        workflow_starter=starter,
     )
     custom_client = TestClient(custom_app)
 
@@ -467,6 +637,10 @@ def test_sqlite_database(tmp_path, create_plan):
         f"/reviews/{review_id}/approval",
         json={"status": "approved", "reviewer": "Igor", "reason": "reason"},
     )
+    assert response.status_code == 202
+    assert response.json()["approval_status"] == "pending"
+    ApprovalActivities(review_store).save_approval(starter.decisions[0])
+    response = custom_client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
     expected_review = response.json()
 
@@ -478,7 +652,9 @@ def test_sqlite_database(tmp_path, create_plan):
     reopened_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset()),
         DeterministicExplanationProvider(),
-        reopened_store,
+        review_store=reopened_store,
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     reopened_client = TestClient(reopened_app)
 
@@ -495,6 +671,8 @@ def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
     custom_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset({"public-inbound-access"})),
         BadExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     custom_client = TestClient(custom_app)
 
@@ -547,6 +725,8 @@ def test_reviews_metric(create_plan):
     test_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset()),
         FakeExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     test_client = TestClient(test_app)
 
@@ -582,6 +762,8 @@ def test_get_metrics(create_plan):
     test_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset()),
         FakeExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     test_client = TestClient(test_app)
 
@@ -599,6 +781,8 @@ def test_approval_metric(create_plan, aws_sg_update_plan):
     test_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset()),
         FakeExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     test_client = TestClient(test_app)
 
@@ -612,11 +796,7 @@ def test_approval_metric(create_plan, aws_sg_update_plan):
         "reason": "Reason",
     }
     response = test_client.post(f"/reviews/{review_id}/approval", json=approved_record)
-    assert response.status_code == 200
-
-    # trying to approve approved record again should rais 409
-    response = test_client.post(f"/reviews/{review_id}/approval", json=approved_record)
-    assert response.status_code == 409
+    assert response.status_code == 202
 
     response = test_client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert response.status_code == 200
@@ -628,7 +808,7 @@ def test_approval_metric(create_plan, aws_sg_update_plan):
         "reason": "Reason",
     }
     response = test_client.post(f"/reviews/{review_id}/approval", json=rejected_record)
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
@@ -651,6 +831,8 @@ def test_record_findings(aws_sg_update_plan):
     test_app = create_app(
         PolicyConfig(),
         FakeExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     test_client = TestClient(test_app)
     test_client.post("/reviews", json={"plan": aws_sg_update_plan})
@@ -667,6 +849,8 @@ def test_record_findings_absent_on_error(aws_sg_update_plan):
     test_app = create_app(
         PolicyConfig(),
         BadExplanationProvider(),
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
     )
     test_client = TestClient(test_app)
     with pytest.raises(RuntimeError):
@@ -676,6 +860,59 @@ def test_record_findings_absent_on_error(aws_sg_update_plan):
         test_app.state.metrics.registry.get_sample_value(
             "terraforminator_policy_findings_total",
             {"policy_id": "public-inbound-access", "severity": "high"},
+        )
+        is None
+    )
+
+
+def test_workflow_starter(aws_sg_update_plan):
+    starter = FakeApprovalWorkflowStarter()
+
+    test_app = create_app(
+        policy_config=PolicyConfig(),
+        explanation_provider=FakeExplanationProvider(),
+        workflow_starter=starter,
+        settings=TEST_SETTINGS,
+    )
+    test_client = TestClient(test_app)
+    response = test_client.post("/reviews", json={"plan": aws_sg_update_plan})
+    assert response.status_code == 200
+
+    body = response.json()
+
+    assert starter.inputs == [
+        ApprovalWorkflowInput(
+            review_id=body["review_id"],
+            policy_result=body["decision"],
+        )
+    ]
+
+
+def test_bad_approval_workflow_starter(aws_sg_update_plan):
+    starter = BadApprovalWorkflowStarter()
+
+    test_app = create_app(
+        policy_config=PolicyConfig(),
+        explanation_provider=FakeExplanationProvider(),
+        workflow_starter=starter,
+        settings=TEST_SETTINGS,
+    )
+    test_client = TestClient(test_app)
+    with pytest.raises(RuntimeError, match="Temporal unavailable"):
+        test_client.post("/reviews", json={"plan": aws_sg_update_plan})
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_policy_findings_total",
+            {"policy_id": "public-inbound-access", "severity": "high"},
+        )
+        is None
+    )
+
+    assert (
+        test_app.state.metrics.registry.get_sample_value(
+            "terraforminator_reviews_total",
+            {"policy_result": "block"},
         )
         is None
     )

@@ -50,3 +50,23 @@ def test_empty_unset_host(monkeypatch, host):
 
     with pytest.raises(ValueError):
         load_app_settings()
+
+
+def test_unset_temporal_address(monkeypatch):
+    monkeypatch.delenv("TERRAFORMINATOR_TEMPORAL_ADDRESS", raising=False)
+
+    assert load_app_settings().temporal_address == "localhost:7233"
+
+
+def test_whitespace_temporal_address(monkeypatch):
+    monkeypatch.setenv("TERRAFORMINATOR_TEMPORAL_ADDRESS", " temporal.test:7233 ")
+
+    assert load_app_settings().temporal_address == "temporal.test:7233"
+
+
+@pytest.mark.parametrize("address", ["", " "])
+def test_empty_temporal_address(monkeypatch, address):
+    monkeypatch.setenv("TERRAFORMINATOR_TEMPORAL_ADDRESS", address)
+
+    with pytest.raises(ValueError, match="TERRAFORMINATOR_TEMPORAL_ADDRESS"):
+        load_app_settings()

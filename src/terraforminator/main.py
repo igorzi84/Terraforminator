@@ -1,11 +1,14 @@
 import logging
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import prometheus_client
 import uvicorn
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.concurrency import run_in_threadpool
+from temporalio.client import Client
 
 from terraforminator.api.v1.schemas import (
     ApprovalRecordResponse,
@@ -15,7 +18,7 @@ from terraforminator.api.v1.schemas import (
     ReviewResponse,
     StoredReviewResponse,
 )
-from terraforminator.config import load_app_settings, load_policy_config
+from terraforminator.config import AppSettings, load_app_settings, load_policy_config
 from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
@@ -30,6 +33,11 @@ from terraforminator.logging_config import configure_logging
 from terraforminator.metrics import ReviewMetrics
 from terraforminator.review_store import InMemoryReviewStore, ReviewStore
 from terraforminator.sqlite_review_store import SQLiteReviewStore
+from terraforminator.temporal.workflow_starter import (
+    ApprovalWorkflowStarter,
+    TemporalApprovalWorkflowStarter,
+)
+from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 POLICY_CONFIG_PATH = CONFIG_DIR / "policies.toml"
@@ -61,9 +69,19 @@ def to_stored_review_response(review: Review) -> StoredReviewResponse:
 def create_app(
     policy_config: PolicyConfig,
     explanation_provider: ExplanationProvider,
+    settings: AppSettings,
     review_store: ReviewStore | None = None,
+    workflow_starter: ApprovalWorkflowStarter | None = None,
 ) -> FastAPI:
-    app = FastAPI()
+    @asynccontextmanager
+    async def lifespan(app):
+        nonlocal workflow_starter
+        if workflow_starter is None:
+            client = await Client.connect(settings.temporal_address)
+            workflow_starter = TemporalApprovalWorkflowStarter(client)
+        yield
+
+    app = FastAPI(lifespan=lifespan)
     metrics = ReviewMetrics()
     app.state.metrics = metrics
 
@@ -71,21 +89,21 @@ def create_app(
         review_store = InMemoryReviewStore()
 
     @app.post("/reviews")
-    def create_review(request: ReviewRequest) -> ReviewResponse:
+    async def create_review(request: ReviewRequest) -> ReviewResponse:
         started_at = time.monotonic()
         review_id = uuid4()
         plan_hash = hash_plan(request.plan)
 
         try:
-            changes = parse_plan(request.plan)
+            changes = await run_in_threadpool(parse_plan, request.plan)
         except InvalidPlanError as error:
             raise HTTPException(
                 422, detail={"code": "invalid_plan", "message": str(error)}
             )
 
-        result = evaluate_review(changes, policy_config)
+        result = await run_in_threadpool(evaluate_review, changes, policy_config)
         review = Review(review_id=review_id, result=result, plan_hash=plan_hash)
-        review_store.save_review(review)
+        await run_in_threadpool(review_store.save_review, review)
 
         findings = [
             FindingResponse(
@@ -100,7 +118,7 @@ def create_app(
 
         try:
             explanation_started_at = time.monotonic()
-            explanation = explanation_provider.explain(result)
+            explanation = await run_in_threadpool(explanation_provider.explain, result)
             metrics.record_explanation_duration(
                 provider_name=explanation_provider.name,
                 seconds=time.monotonic() - explanation_started_at,
@@ -115,6 +133,13 @@ def create_app(
                 },
             )
             raise
+        workflow_id = None
+        if workflow_starter is not None:
+            input = ApprovalWorkflowInput(
+                review_id=str(review_id),
+                policy_result=result.decision,
+            )
+            workflow_id = await workflow_starter.start(input)
         metrics.record_review(result.decision)
         for finding in result.findings:
             metrics.record_policy_findings(finding)
@@ -126,6 +151,7 @@ def create_app(
                 "review_id": str(review_id),
                 "plan_hash": plan_hash,
                 "policy_result": result.decision,
+                "workflow_id": workflow_id,
             },
         )
         return ReviewResponse(
@@ -147,23 +173,22 @@ def create_app(
 
         return to_stored_review_response(review)
 
-    @app.post("/reviews/{review_id}/approval")
-    def approve_review(
+    @app.post("/reviews/{review_id}/approval", status_code=202)
+    async def approve_review(
         approval_request: ApprovalRequest, review_id: UUID
     ) -> StoredReviewResponse:
-        approval_record = ApprovalRecord(
-            review_id=review_id,
-            status=approval_request.status,
-            reviewer=approval_request.reviewer,
-            reason=approval_request.reason,
-        )
         try:
-            review_store.save_approval(approval_record)
+            review = await run_in_threadpool(review_store.get_review, review_id)
         except KeyError:
             raise HTTPException(
-                404, detail={"code": "review_not_found", "message": "Review not found"}
+                404,
+                detail={
+                    "code": "review_not_found",
+                    "message": "Review not found.",
+                },
             )
-        except ValueError:
+
+        if review.approval_status != "pending":
             raise HTTPException(
                 409,
                 detail={
@@ -172,16 +197,25 @@ def create_app(
                 },
             )
 
+        approval_record = ApprovalRecord(
+            review_id=review_id,
+            status=approval_request.status,
+            reviewer=approval_request.reviewer,
+            reason=approval_request.reason,
+        )
+
+        if workflow_starter is not None:
+            await workflow_starter.record_decision(approval_record)
         metrics.record_approval(approval_request.status)
-        review = review_store.get_review(review_id=review_id)
+        review = await run_in_threadpool(review_store.get_review, review_id=review_id)
 
         logger.info(
-            "Human decision recorded",
+            "Human decision submitted",
             extra={
                 "review_id": str(review.review_id),
                 "plan_hash": review.plan_hash,
                 "policy_result": review.result.decision,
-                "approval_outcome": review.approval_status,
+                "requested_approval_status": approval_request.status,
             },
         )
         return to_stored_review_response(review)
@@ -224,6 +258,9 @@ def main() -> None:
     review_store = SQLiteReviewStore(settings.database_path)
 
     app = create_app(
-        policy_config, DeterministicExplanationProvider(), review_store=review_store
+        policy_config,
+        DeterministicExplanationProvider(),
+        review_store=review_store,
+        settings=settings,
     )
     uvicorn.run(app, host=settings.host, port=8000)

@@ -12,6 +12,7 @@ ROOT_DIR = Path(__file__).parent.parent.parent
 class AppSettings:
     database_path: Path
     host: str
+    temporal_address: str
 
 
 def load_app_settings() -> AppSettings:
@@ -23,13 +24,21 @@ def load_app_settings() -> AppSettings:
         database_path = Path(database_path_str)
 
     host = "127.0.0.1"
-    terraforminator_host = os.getenv("TERRAFORMINATOR_HOST")
-    if terraforminator_host is not None:
-        if not terraforminator_host.strip():
+    host_var = os.getenv("TERRAFORMINATOR_HOST")
+    if host_var is not None:
+        if not host_var.strip():
             raise ValueError("TERRAFORMINATOR_HOST must not be blank")
-        host = terraforminator_host.strip()
+        host = host_var.strip()
 
-    settings = AppSettings(database_path=database_path, host=host)
+    temporal_address = "localhost:7233"
+    temporal_address_var = os.getenv("TERRAFORMINATOR_TEMPORAL_ADDRESS")
+    if temporal_address_var is not None:
+        if not temporal_address_var.strip():
+            raise ValueError("TERRAFORMINATOR_TEMPORAL_ADDRESS must not be blank")
+        temporal_address = temporal_address_var.strip()
+    settings = AppSettings(
+        database_path=database_path, host=host, temporal_address=temporal_address
+    )
 
     return settings
 
