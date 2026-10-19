@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import prometheus_client
 import pytest
 from fastapi.testclient import TestClient
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import ActivityEnvironment
 
 from terraforminator.config import AppSettings
@@ -106,7 +107,10 @@ def test_lifespan_reuses_temporal_client(monkeypatch, create_plan):
     )
 
     with TestClient(test_app) as test_client:
-        connect.assert_awaited_once_with(TEST_SETTINGS.temporal_address)
+        connect.assert_awaited_once_with(
+            TEST_SETTINGS.temporal_address,
+            data_converter=pydantic_data_converter,
+        )
         for _ in range(2):
             response = test_client.post("/reviews", json={"plan": create_plan})
             assert response.status_code == 200
@@ -159,7 +163,10 @@ def test_lifespan_connection_failure_prevents_startup(monkeypatch):
         with TestClient(test_app):
             pytest.fail("App started despite a failed Temporal connection")
 
-    connect.assert_awaited_once_with(TEST_SETTINGS.temporal_address)
+    connect.assert_awaited_once_with(
+        TEST_SETTINGS.temporal_address,
+        data_converter=pydantic_data_converter,
+    )
 
 
 def test_create_review_approve(create_plan):

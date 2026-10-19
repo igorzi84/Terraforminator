@@ -9,6 +9,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from terraforminator.api.v1.schemas import (
     ApprovalRecordResponse,
@@ -77,7 +78,9 @@ def create_app(
     async def lifespan(app):
         nonlocal workflow_starter
         if workflow_starter is None:
-            client = await Client.connect(settings.temporal_address)
+            client = await Client.connect(
+                settings.temporal_address, data_converter=pydantic_data_converter
+            )
             workflow_starter = TemporalApprovalWorkflowStarter(client)
         yield
 
