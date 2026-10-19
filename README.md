@@ -10,8 +10,8 @@ storing reviews in SQLite, recording human decisions, and retrieving audit
 records. A Temporal workflow receives human decisions and saves them through
 an activity. Structured JSON logs capture completed reviews and submitted human
 decisions. A Prometheus endpoint exposes review, policy-finding, and approval-submission counters,
-review duration, and explanation latency. Docker Compose runs the API alongside
-Prometheus for local metric collection. The Temporal server and worker run separately.
+review duration, and explanation latency. Docker Compose runs the API, Temporal
+development server, approval worker, and Prometheus together.
 
 ## Safety boundary
 
@@ -74,7 +74,21 @@ uv sync --dev
 uv run pytest
 ```
 
-Start the API:
+For the full local stack, use the Docker Compose instructions below. To run
+directly on your host, install the [Temporal CLI](https://docs.temporal.io/cli/setup-cli)
+and start its development server first:
+
+```bash
+temporal server start-dev
+```
+
+In another terminal, start the worker from the repository root:
+
+```bash
+uv run python -m terraforminator.temporal.worker
+```
+
+Then start the API in a third terminal from the same directory:
 
 ```bash
 uv run terraforminator
@@ -118,20 +132,29 @@ The named volume is managed by Docker. On macOS with Docker Desktop, it lives
 inside Docker's Linux VM rather than in the repository. Inspect it with
 `docker volume inspect terraforminator-data`.
 
-### Run with Docker Compose and Prometheus
+### Run with Docker Compose
 
-From the repository root, start the API and Prometheus together:
+From the repository root, start the API, approval worker, Temporal development
+server, and Prometheus together:
 
 ```bash
 docker compose up --build
 ```
 
-Stop any API already using port `8000` before starting Compose. Both services
-publish ports only on localhost:
+Stop any host API, Temporal server, and worker before starting Compose to avoid
+port conflicts and having a host worker consume workflows intended for the
+Compose worker. Published ports bind only to localhost:
 
 - API documentation: `http://127.0.0.1:8000/docs`
 - API metrics: `http://127.0.0.1:8000/metrics`
+- Temporal UI: `http://localhost:8233`
+- Temporal gRPC endpoint: `127.0.0.1:7233`
 - Prometheus UI: `http://127.0.0.1:9090`
+
+The API and worker connect to `temporal:7233` through the Compose network. Both
+wait for Temporal's healthcheck to pass before starting. The Temporal entrypoint
+fixes its data-directory ownership as root, then starts the development server
+as the `temporal` user.
 
 [`config/prometheus.yml`](config/prometheus.yml) configures Prometheus to scrape
 `api:8000` every 15 seconds. The `api` hostname is the Compose service name;
@@ -148,9 +171,26 @@ terraforminator_reviews_total
 The counter for the review's `policy_result` should increase by one. Before the
 first successfully completed review, this query may return no data.
 
-Compose mounts `terraforminator-data` at `/data` to retain SQLite records and
-`prometheus-data` at `/prometheus` to retain metric history across container
-recreation.
+Compose uses three named volumes:
+
+- `terraforminator-data` is mounted at `/data` in both the API and worker. They
+  share `/data/terraforminator.db` for reviews and approval audit records.
+- `temporal-data` is mounted at `/data` in Temporal. Its separate
+  `/data/temporal.db` stores workflow history across container recreation.
+- `prometheus-data` is mounted at `/prometheus` for metric history.
+
+To verify approval processing after a worker restart:
+
+1. Stop only the worker with `docker compose stop worker`.
+2. Use the API examples below to create a new review and submit its approval.
+   Expect `202 Accepted`; retrieving the review should still show `pending`.
+3. Start the worker with `docker compose start worker`.
+4. Retrieve the review again until it shows `approved`. Check
+   `docker compose logs worker` for `Human decision persisted` with the matching
+   `review_id`. A deterministic policy `block` must still keep `can_deploy` false.
+
+Temporal retains the signal while the worker is stopped; the worker processes
+it when it starts again.
 
 The Prometheus configuration sets retention to one day (`1d`) and a size
 threshold of `256MB`. Whichever limit triggers first determines removal of old
@@ -159,7 +199,7 @@ recent data, the write-ahead log, and temporary compaction files can require
 additional space.
 
 Press Ctrl+C to stop the services, or run `docker compose down` to stop and
-remove their containers and network while retaining both named volumes.
+remove their containers and network while retaining all three named volumes.
 
 ### Host configuration
 
@@ -200,6 +240,8 @@ timestamp, log level, logger name, and message.
   and the current review is retrieved. It includes the same review fields plus
   `requested_approval_status` (`approved` or `rejected`). This event does not
   confirm that the activity has persisted the decision.
+- `Human decision persisted` is emitted by the worker after the activity saves
+  the decision. It includes `review_id`, `approval_outcome`, and `workflow_id`.
 
 Failed approval requests do not emit a successful human-decision event.
 
@@ -316,9 +358,9 @@ This endpoint submits a decision; it does not deploy infrastructure or provide
 a CI/CD gate yet.
 
 The Temporal server must be available when the API starts. The worker must be
-running to execute approval activities. For local development, run
-`temporal server start-dev` and `uv run python -m terraforminator.temporal.worker`
-in separate terminals. Configure the API and worker with the same
+running to execute approval activities. Docker Compose starts both services;
+for direct host execution, use the separate-terminal instructions under
+"Run locally". Configure the API and worker with the same
 `TERRAFORMINATOR_TEMPORAL_ADDRESS` (default `localhost:7233`) and SQLite database
 file via `TERRAFORMINATOR_DB_PATH`.
 

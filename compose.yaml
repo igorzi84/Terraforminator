@@ -1,10 +1,16 @@
 services:
   api:
     build: .
+    environment:
+      - TERRAFORMINATOR_TEMPORAL_ADDRESS=temporal:7233
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
       - terraforminator-data:/data
+    depends_on:
+      temporal:
+        condition: service_healthy
+
   prometheus:
     image: prom/prometheus
     ports:
@@ -12,6 +18,56 @@ services:
     volumes:
       - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+  temporal:
+    image: temporalio/temporal
+    # volume mounts as root, we need to fix ownership so temporal can write
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        chown 1000:1000 /data &&
+        exec su -s /bin/sh temporal -c \
+          'exec temporal server start-dev --ip 0.0.0.0 --db-filename /data/temporal.db'
+
+    ports:
+      - "127.0.0.1:7233:7233"
+      - "127.0.0.1:8233:8233"
+    volumes:
+      - temporal-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "temporal",
+          "operator",
+          "cluster",
+          "health",
+          "--address",
+          "127.0.0.1:7233",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+  worker:
+    build: .
+    entrypoint:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "terraforminator.temporal.worker",
+      ]
+    environment:
+      TERRAFORMINATOR_TEMPORAL_ADDRESS: temporal:7233
+    volumes:
+      - terraforminator-data:/data
+    depends_on:
+      temporal:
+        condition: service_healthy
 volumes:
   terraforminator-data:
   prometheus-data:
+  temporal-data:

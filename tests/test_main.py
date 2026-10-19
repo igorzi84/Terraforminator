@@ -159,9 +159,11 @@ def test_lifespan_connection_failure_prevents_startup(monkeypatch):
         PolicyConfig(), FakeExplanationProvider(), settings=TEST_SETTINGS
     )
 
-    with pytest.raises(RuntimeError, match="Temporal unavailable"):
-        with TestClient(test_app):
-            pytest.fail("App started despite a failed Temporal connection")
+    with (
+        pytest.raises(RuntimeError, match="Temporal unavailable"),
+        TestClient(test_app),
+    ):
+        pytest.fail("App started despite a failed Temporal connection")
 
     connect.assert_awaited_once_with(
         TEST_SETTINGS.temporal_address,
