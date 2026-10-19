@@ -1,6 +1,7 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
@@ -22,7 +23,18 @@ from terraforminator.temporal.workflow_starter import TemporalApprovalWorkflowSt
 from terraforminator.temporal.workflows.approval import ApprovalWorkflow
 
 
-def test_temporal_approval(tmp_path, create_plan):
+@pytest.mark.parametrize(
+    "plan_fixture, expected_decision, can_deploy",
+    [
+        ("aws_sg_update_plan", "block", False),
+        ("create_plan", "approve", True),
+    ],
+)
+def test_temporal_approval(
+    tmp_path, request, plan_fixture, expected_decision, can_deploy
+):
+    plan = request.getfixturevalue(plan_fixture)
+
     async def run_test():
         async with await WorkflowEnvironment.start_local(
             data_converter=pydantic_data_converter,
@@ -62,11 +74,10 @@ def test_temporal_approval(tmp_path, create_plan):
                             base_url="http://test",
                         ) as client,
                     ):
-                        response = await client.post(
-                            "/reviews", json={"plan": create_plan}
-                        )
+                        response = await client.post("/reviews", json={"plan": plan})
                         assert response.status_code == 200
                         review_id = response.json()["review_id"]
+                        assert response.json()["decision"] == expected_decision
 
                         response = await client.get(f"/reviews/{review_id}")
                         assert response.status_code == 200
@@ -77,7 +88,7 @@ def test_temporal_approval(tmp_path, create_plan):
                             json={
                                 "status": "approved",
                                 "reviewer": "Igor",
-                                "reason": "Reviewed the local Docker plan",
+                                "reason": "Reviewed the plan",
                             },
                         )
                         assert response.status_code == 202
@@ -89,13 +100,13 @@ def test_temporal_approval(tmp_path, create_plan):
                         response = await client.get(f"/reviews/{review_id}")
                         assert response.status_code == 200
                         assert response.json()["approval_status"] == "approved"
-                        assert response.json()["can_deploy"] is True
+                        assert response.json()["can_deploy"] is can_deploy
 
                         response = await client.get(f"/reviews/{review_id}/approval")
                         assert response.status_code == 200
                         audit = response.json()
                         assert audit["status"] == "approved"
                         assert audit["reviewer"] == "Igor"
-                        assert audit["reason"] == "Reviewed the local Docker plan"
+                        assert audit["reason"] == "Reviewed the plan"
 
     asyncio.run(run_test())
