@@ -1,8 +1,11 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from temporalio import activity
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -15,23 +18,26 @@ from terraforminator.config import AppSettings
 from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
-from terraforminator.domain.models import PolicyConfig
+from terraforminator.domain.models import ApprovalRecord, PolicyConfig, Review, ReviewResult
 from terraforminator.main import create_app
 from terraforminator.sqlite_review_store import SQLiteReviewStore
 from terraforminator.temporal.activities.approval import ApprovalActivities
 from terraforminator.temporal.workflow_starter import TemporalApprovalWorkflowStarter
 from terraforminator.temporal.workflows.approval import ApprovalWorkflow
+from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
 
 
 @pytest.mark.parametrize(
-    "plan_fixture, expected_decision, can_deploy",
+    "plan_fixture, expected_decision, approval_status, can_deploy",
     [
-        ("aws_sg_update_plan", "block", False),
-        ("create_plan", "approve", True),
+        ("aws_sg_update_plan", "block", "approved", False),
+        ("aws_sg_update_plan", "block", "rejected", False),
+        ("create_plan", "approve", "approved", True),
+        ("create_plan", "approve", "rejected", False),
     ],
 )
 def test_temporal_approval(
-    tmp_path, request, plan_fixture, expected_decision, can_deploy
+    tmp_path, request, plan_fixture, expected_decision, approval_status, can_deploy
 ):
     plan = request.getfixturevalue(plan_fixture)
 
@@ -86,7 +92,7 @@ def test_temporal_approval(
                         response = await client.post(
                             f"/reviews/{review_id}/approval",
                             json={
-                                "status": "approved",
+                                "status": approval_status,
                                 "reviewer": "Igor",
                                 "reason": "Reviewed the plan",
                             },
@@ -95,18 +101,91 @@ def test_temporal_approval(
 
                         handle = env.client.get_workflow_handle(f"approval-{review_id}")
                         result = await asyncio.wait_for(handle.result(), timeout=15)
-                        assert result == "approved"
+                        assert result == approval_status
 
                         response = await client.get(f"/reviews/{review_id}")
                         assert response.status_code == 200
-                        assert response.json()["approval_status"] == "approved"
+                        assert response.json()["approval_status"] == approval_status
                         assert response.json()["can_deploy"] is can_deploy
 
                         response = await client.get(f"/reviews/{review_id}/approval")
                         assert response.status_code == 200
                         audit = response.json()
-                        assert audit["status"] == "approved"
+                        assert audit["status"] == approval_status
                         assert audit["reviewer"] == "Igor"
                         assert audit["reason"] == "Reviewed the plan"
+
+    asyncio.run(run_test())
+
+
+def test_temporal_approval_retries_after_database_commit(tmp_path, monkeypatch):
+    async def run_test():
+        async with await WorkflowEnvironment.start_local(
+            data_converter=pydantic_data_converter,
+        ) as env:
+            database_path = tmp_path / "reviews.db"
+            store = SQLiteReviewStore(database_path)
+            record = ApprovalRecord(
+                review_id=uuid4(),
+                status="approved",
+                reviewer="Igor",
+                reason="Reviewed the plan",
+                decided_at=datetime(2026, 10, 19, 14, 0, tzinfo=UTC),
+            )
+            store.save_review(
+                Review(
+                    review_id=record.review_id,
+                    result=ReviewResult(decision="approve", findings=()),
+                    plan_hash="retry-test-plan",
+                )
+            )
+            save_approval = store.save_approval
+            attempts = []
+            persisted_records = []
+
+            def save_then_fail_once(approval_record: ApprovalRecord) -> None:
+                attempts.append(activity.info().attempt)
+                save_approval(approval_record)
+                # Read through a new connection to prove the commit succeeded
+                # before simulating failure to acknowledge activity completion.
+                persisted_records.append(store.get_record(approval_record.review_id))
+                if len(attempts) == 1:
+                    raise RuntimeError("Simulated failure after database commit")
+
+            monkeypatch.setattr(store, "save_approval", save_then_fail_once)
+            activities = ApprovalActivities(store)
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                async with Worker(
+                    env.client,
+                    task_queue="terraforminator-approval",
+                    workflows=[ApprovalWorkflow],
+                    activities=[activities.save_approval],
+                    activity_executor=executor,
+                    workflow_runner=SandboxedWorkflowRunner(
+                        restrictions=SandboxRestrictions.default.with_passthrough_modules(
+                            "annotated_types"
+                        ),
+                    ),
+                ):
+                    starter = TemporalApprovalWorkflowStarter(env.client)
+                    workflow_id = await starter.start(
+                        ApprovalWorkflowInput(
+                            review_id=str(record.review_id), policy_result="approve"
+                        )
+                    )
+                    await starter.record_decision(record)
+                    handle = env.client.get_workflow_handle(workflow_id)
+                    result = await asyncio.wait_for(handle.result(), timeout=15)
+
+                    assert result == "approved"
+                    assert attempts == [1, 2]
+                    assert persisted_records == [record, record]
+                    reopened_store = SQLiteReviewStore(database_path)
+                    assert reopened_store.get_record(record.review_id) == record
+                    assert (
+                        reopened_store.get_review(record.review_id).approval_status
+                        == "approved"
+                    )
 
     asyncio.run(run_test())
