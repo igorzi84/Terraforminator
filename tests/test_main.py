@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import prometheus_client
 import pytest
 from fastapi.testclient import TestClient
+from temporalio.testing import ActivityEnvironment
 
 from terraforminator.config import AppSettings
 from terraforminator.deterministic_explanation_provider import (
@@ -414,7 +415,9 @@ def test_duplicate_approve_review(aws_sg_update_plan, approval_client, approval_
     assert review["decision"] == "block"
     assert review["approval_status"] == "pending"
     # Explicitly simulate the worker persisting the first signal.
-    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
+    ActivityEnvironment().run(
+        ApprovalActivities(approval_store).save_approval, starter.decisions[0]
+    )
 
     # Try to approve again with different status
     response = client.post(
@@ -503,7 +506,9 @@ def test_get_approval_record(aws_sg_update_plan, approval_client, approval_store
     assert review["decision"] == "block"
     assert review["approval_status"] == "pending"
     assert client.get(f"/reviews/{review_id}/approval").status_code == 404
-    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
+    ActivityEnvironment().run(
+        ApprovalActivities(approval_store).save_approval, starter.decisions[0]
+    )
 
     response = client.get(f"/reviews/{review_id}/approval")
     assert response.status_code == 200
@@ -547,7 +552,9 @@ def test_pending_review_can_deploy_false(aws_sg_update_plan):
     assert response.json()["can_deploy"] is False
 
 
-def test_blocked_review_can_deploy_false(aws_sg_update_plan, approval_client, approval_store):
+def test_blocked_review_can_deploy_false(
+    aws_sg_update_plan, approval_client, approval_store
+):
     client, starter = approval_client
     """Test blocked review can_deploy = False even if approved by human"""
     response = client.post("/reviews", json={"plan": aws_sg_update_plan})
@@ -562,7 +569,9 @@ def test_blocked_review_can_deploy_false(aws_sg_update_plan, approval_client, ap
     assert response.status_code == 202
     assert response.json()["can_deploy"] is False
 
-    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
+    ActivityEnvironment().run(
+        ApprovalActivities(approval_store).save_approval, starter.decisions[0]
+    )
     response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
     assert response.json()["approval_status"] == "approved"
@@ -589,7 +598,9 @@ def test_approved_review_can_deploy(create_plan, approval_client, approval_store
     assert response.status_code == 202
     assert response.json()["can_deploy"] is False
 
-    ApprovalActivities(approval_store).save_approval(starter.decisions[0])
+    ActivityEnvironment().run(
+        ApprovalActivities(approval_store).save_approval, starter.decisions[0]
+    )
 
     response = client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
@@ -639,7 +650,9 @@ def test_sqlite_database(tmp_path, create_plan):
     )
     assert response.status_code == 202
     assert response.json()["approval_status"] == "pending"
-    ApprovalActivities(review_store).save_approval(starter.decisions[0])
+    ActivityEnvironment().run(
+        ApprovalActivities(review_store).save_approval, starter.decisions[0]
+    )
     response = custom_client.get(f"/reviews/{review_id}")
     assert response.status_code == 200
     expected_review = response.json()
@@ -812,16 +825,16 @@ def test_approval_metric(create_plan, aws_sg_update_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_approval_decisions_total",
-            {"approval_outcome": "approved"},
+            "terraforminator_approval_submissions_total",
+            {"requested_status": "approved"},
         )
         == 1
     )
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_approval_decisions_total",
-            {"approval_outcome": "rejected"},
+            "terraforminator_approval_submissions_total",
+            {"requested_status": "rejected"},
         )
         == 1
     )

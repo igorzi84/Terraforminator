@@ -15,9 +15,9 @@ class ReviewMetrics:
         )
 
         self.approvals_total = Counter(
-            "terraforminator_approval_decisions_total",
-            "Total successfully recorded human decisions",
-            labelnames=("approval_outcome",),
+            "terraforminator_approval_submissions_total",
+            "Total approval submissions",
+            labelnames=("requested_status",),
             registry=self.registry,
         )
 
@@ -45,8 +45,8 @@ class ReviewMetrics:
     def record_review(self, policy_result: ReviewDecision) -> None:
         self.reviews_total.labels(policy_result=policy_result).inc()
 
-    def record_approval(self, approval_outcome: ApprovalDecision) -> None:
-        self.approvals_total.labels(approval_outcome=approval_outcome).inc()
+    def record_approval_submission(self, requested_status: ApprovalDecision) -> None:
+        self.approvals_total.labels(requested_status=requested_status).inc()
 
     def record_review_duration(
         self, policy_result: ReviewDecision, seconds: float

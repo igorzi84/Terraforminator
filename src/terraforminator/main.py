@@ -206,7 +206,7 @@ def create_app(
 
         if workflow_starter is not None:
             await workflow_starter.record_decision(approval_record)
-        metrics.record_approval(approval_request.status)
+        metrics.record_approval_submission(approval_request.status)
         review = await run_in_threadpool(review_store.get_review, review_id=review_id)
 
         logger.info(

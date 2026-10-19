@@ -7,10 +7,11 @@ review decision with concrete findings.
 It is a local-first portfolio project. The current implementation provides the
 plan-review domain layer, deterministic explanations, and a FastAPI API for
 storing reviews in SQLite, recording human decisions, and retrieving audit
-records. Structured JSON logs capture completed reviews and saved human
-decisions. A Prometheus endpoint exposes review, policy-finding, and human-decision counters,
+records. A Temporal workflow receives human decisions and saves them through
+an activity. Structured JSON logs capture completed reviews and submitted human
+decisions. A Prometheus endpoint exposes review, policy-finding, and approval-submission counters,
 review duration, and explanation latency. Docker Compose runs the API alongside
-Prometheus for local metric collection. Temporal workflows are planned.
+Prometheus for local metric collection. The Temporal server and worker run separately.
 
 ## Safety boundary
 
@@ -195,9 +196,10 @@ timestamp, log level, logger name, and message.
 
 - `Review created` is emitted after the review is stored and its explanation
   succeeds. It includes `review_id`, `plan_hash`, and `policy_result`.
-- `Human decision recorded` is emitted after an approval or rejection is saved
-  and the updated review is retrieved. It includes the same review fields plus
-  `approval_outcome` (`approved` or `rejected`).
+- `Human decision submitted` is emitted after the approval signal is accepted
+  and the current review is retrieved. It includes the same review fields plus
+  `requested_approval_status` (`approved` or `rejected`). This event does not
+  confirm that the activity has persisted the decision.
 
 Failed approval requests do not emit a successful human-decision event.
 
@@ -213,15 +215,17 @@ curl --fail-with-body -sS http://127.0.0.1:8000/metrics
 | --- | --- | --- | --- |
 | `terraforminator_reviews_total` | Counter | `policy_result` | `approve`, `needs_review`, `block` |
 | `terraforminator_policy_findings_total` | Counter | `policy_id`, `severity` | Policy IDs listed above; severity `low`, `medium`, or `high` |
-| `terraforminator_approval_decisions_total` | Counter | `approval_outcome` | `approved`, `rejected` |
+| `terraforminator_approval_submissions_total` | Counter | `requested_status` | `approved`, `rejected` |
 | `terraforminator_review_duration_seconds` | Histogram | `policy_result` | `approve`, `needs_review`, `block` |
 | `terraforminator_explanation_duration_seconds` | Histogram | `provider_name` | `deterministic` for the current provider |
 
-The review counter increments after storage and explanation succeed. The
-human-decision counter increments after an approval or rejection is saved.
-Invalid requests, failed explanations, and failed approval requests do not
-increment these counters. Policy results and human decisions are counted
-separately; human approval of a blocked review still does not allow deployment.
+The review counter increments after storage, explanation, and workflow startup
+succeed. The approval-submission counter increments after Temporal accepts the
+signal. It counts submissions, including later signals that the workflow may
+ignore; it does not confirm persistence. Invalid inputs, unknown reviews, and
+already finalized reviews do not increment it, nor do failed signal calls.
+Policy results and approval submissions are counted separately; human approval
+of a blocked review still does not allow deployment.
 
 The policy-finding counter increments once per finding after review storage and
 explanation succeed. Multiple findings in a review are counted separately,
@@ -303,11 +307,20 @@ curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id/approval" \
 ```
 
 Use `"rejected"` to reject the review. Reviewer and reason must be nonblank.
-The response returns the updated review with a recalculated `can_deploy` value.
-A human decision updates `approval_status` and preserves the deterministic
+The endpoint returns `202 Accepted` with the current review snapshot. The
+approval status may still be `pending`: accepting the signal does not wait for
+the persistence activity. Retrieve the review again to observe the saved status
+and recalculated `can_deploy` value. Persistence preserves the deterministic
 policy decision and findings, even when a human approves a policy `"block"`.
-This endpoint records a decision; it does not deploy infrastructure or provide
+This endpoint submits a decision; it does not deploy infrastructure or provide
 a CI/CD gate yet.
+
+The Temporal server must be available when the API starts. The worker must be
+running to execute approval activities. For local development, run
+`temporal server start-dev` and `uv run python -m terraforminator.temporal.worker`
+in separate terminals. Configure the API and worker with the same
+`TERRAFORMINATOR_TEMPORAL_ADDRESS` (default `localhost:7233`) and SQLite database
+file via `TERRAFORMINATOR_DB_PATH`.
 
 ### Retrieve the audit record
 
@@ -317,13 +330,16 @@ curl --fail-with-body -sS "http://127.0.0.1:8000/reviews/$review_id/approval"
 
 The response contains `review_id`, `status`, `reviewer`, `reason`, and
 `decided_at`. The `decided_at` timestamp is the UTC time when the human decision
-was recorded, serialized as an ISO 8601 string. Retrieving the record preserves
+was submitted to the API, serialized as an ISO 8601 string. Retrieving the record preserves
 the original timestamp.
 
 Invalid plans or approval inputs return `422`. Unknown reviews return `404`;
-retrieving an approval record before a human decision also returns `404` with
-`approval_not_found`. A second human decision returns `409` with
-`review_not_pending` and leaves the original decision intact.
+retrieving an approval record before persistence completes also returns `404`
+with `approval_not_found`. A decision submitted after the review is finalized
+returns `409` with `review_not_pending`. While the review is still pending,
+additional submissions can be accepted; the workflow keeps the first received
+record and ignores later signals. Saving the exact same approval record again
+is safe to retry; a different record cannot overwrite the persisted decision.
 
 ## Local Terraform demo
 
@@ -366,6 +382,6 @@ git diff --check
 ## Planned work
 
 - Optional model-backed advisory explanations grounded in policy findings.
-- Temporal human approval workflow and a CI/CD approval gate.
+- A CI/CD approval gate using the persisted human decision and policy result.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.
