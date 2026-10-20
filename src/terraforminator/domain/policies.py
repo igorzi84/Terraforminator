@@ -64,9 +64,14 @@ def check_iam_wildcard_permissions(
 
     policy = json.loads(change.after["policy"])
     for statement in policy["Statement"]:
-        if statement["Effect"] == "Allow" and (
-            statement["Action"] == "*" or statement["Resource"] == "*"
-        ):
+        actions = statement["Action"]
+        if isinstance(actions, str):
+            actions = [actions]
+        resources = statement["Resource"]
+        if isinstance(resources, str):
+            resources = [resources]
+
+        if statement["Effect"] == "Allow" and ("*" in actions or "*" in resources):
             finding = Finding(
                 id="iam-wildcard-permission",
                 severity="high",
