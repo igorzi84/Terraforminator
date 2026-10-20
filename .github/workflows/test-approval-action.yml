@@ -17,7 +17,7 @@ jobs:
           curl --fail --silent --show-error \
           --retry 10 \
           --retry-delay 2 \
-          --retry-connrefused \
+          --retry-all-errors \
           --connect-timeout 2 \
           --max-time 5 \
           --output /dev/null \
