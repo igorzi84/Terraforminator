@@ -1,0 +1,71 @@
+name: Check approval action
+
+on:
+  workflow_dispatch:
+
+jobs:
+  start-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Start docker compose
+        run: docker compose up --build --wait
+
+      - name: Wait for API
+        run: |
+          curl --fail --silent --show-error \
+          --retry 10 \
+          --retry-delay 2 \
+          --retry-connrefused \
+          --connect-timeout 2 \
+          --max-time 5 \
+          --output /dev/null \
+          http://127.0.0.1:8000/openapi.json
+
+      - name: Create a review
+        id: review
+        shell: bash
+        run: |
+          response=$(jq '{plan: .}' tests/fixtures/plans/nginx-create.json |
+            curl --fail --silent --show-error \
+              -H 'Content-Type: application/json' \
+              --data-binary @- \
+              http://127.0.0.1:8000/reviews)
+              review_id=$(printf '%s' "$response" | jq -er '.review_id')
+              printf 'review_id=%s\n' "$review_id" >> "$GITHUB_OUTPUT"
+
+      - name: Approve review
+        env:
+          REVIEW_ID: ${{ steps.review.outputs.review_id }}
+        shell: bash
+        run: |
+          curl --fail --silent --show-error \
+              -H 'Content-Type: application/json' \
+              --data '{"status":"approved","reviewer":"integration-test","reason":"Simulated approval for CI integration test"}' \
+              http://127.0.0.1:8000/reviews/"$REVIEW_ID"/approval
+
+      - name: Wait for approval persistence
+        env:
+          REVIEW_ID: ${{ steps.review.outputs.review_id }}
+        shell: bash
+        run: |
+          for attempt in {1..15}; do
+            response=$(curl --fail --silent --show-error --max-time 5 \
+              "http://127.0.0.1:8000/reviews/$REVIEW_ID")
+
+            if printf '%s' "$response" | jq -e '.approval_status == "approved"' > /dev/null; then
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Approval was not persisted in time"
+          exit 1
+
+      - name: Can deploy
+        uses: ./.github/actions/check-approval
+        with:
+          api_url: http://127.0.0.1:8000
+          review_id: ${{ steps.review.outputs.review_id }}
