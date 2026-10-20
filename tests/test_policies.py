@@ -109,6 +109,8 @@ def test_evaluate_policies_iam_no_wildcard():
         ("*", "*"),
         ("*", "arn:aws:s3:::terraforminator-demo/*"),
         ("s3:GetObject", "*"),
+        (["*"], "arn:aws:s3:::terraforminator-demo/*"),
+        ("s3:GetObject", ["*"]),
     ],
 )
 def test_evaluate_policies_iam_wildcard(action, resource):
