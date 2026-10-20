@@ -13,7 +13,9 @@ decisions. A Prometheus endpoint exposes review, policy-finding, and approval-su
 review duration, and explanation latency. Docker Compose runs the API, Temporal
 development server, approval worker, and Prometheus together.
 A composite GitHub Action checks a stored review's deployment eligibility;
-a manually triggered workflow demonstrates calling it.
+a manually triggered workflow demonstrates calling it against an existing API.
+A separate integration workflow runs the stack and approval check on pull
+requests and can also be triggered manually.
 
 ## Safety boundary
 
@@ -424,7 +426,6 @@ This example assumes the calling workflow defines those two inputs. The
 `workflow_dispatch`. Once the workflow is available on the default branch,
 open **Actions → Demo approval gate → Run workflow** and supply the API URL
 and an existing review ID. It checks approval only; it has no deployment step.
-Execution against a running Terraforminator instance remains unverified.
 
 The runner needs Bash, `curl`, `jq`, and network access to the API. The demo
 uses `ubuntu-latest`: `127.0.0.1` there refers to the GitHub-hosted runner,
@@ -432,6 +433,35 @@ not your laptop. To check a company-hosted Terraforminator instance, use an
 API address reachable from the chosen runner. An API on a private network
 requires a runner with access to that network. The action does not establish
 network connectivity or configure API authentication.
+
+### Approval action integration test
+
+The [integration workflow](.github/workflows/test-approval-action.yml), displayed
+as **Check approval action**, runs on pull requests and through
+`workflow_dispatch`. Its `approval-integration` job:
+
+1. Starts the Docker Compose stack on the GitHub-hosted runner.
+2. Waits for the local API to respond, retrying startup connection errors.
+3. Creates a review from the checked-in `nginx-create.json` fixture.
+4. Submits a simulated approval identified as an integration test.
+5. Polls until the worker has persisted the approval.
+6. Calls the composite action and expects deployment eligibility to be true.
+
+This flow has passed in GitHub Actions. It uses the runner's own API and
+database, needs no externally hosted Terraforminator instance, and does not
+deploy infrastructure. Simulated approval belongs only to this test; normal
+deployment reviews still require a human decision. The separate demo workflow
+above checks an existing instance and review supplied by the caller.
+
+To run the integration test manually, open **Actions → Check approval action →
+Run workflow** and choose the branch to test. No API URL or review ID inputs
+are needed.
+
+For `main` protection, configure the repository ruleset to require both `test`
+from the [tests workflow](.github/workflows/tests.yml) and
+`approval-integration`. Running workflows on pull requests does not by itself
+make their checks mandatory; select both checks in the ruleset and keep their
+job IDs stable.
 
 ## Local Terraform demo
 
@@ -474,7 +504,6 @@ git diff --check
 ## Planned work
 
 - Optional model-backed advisory explanations grounded in policy findings.
-- Verify the approval action against a running instance and demonstrate it
-  before a deployment step in CI/CD.
+- Demonstrate the approval action before a deployment step in CI/CD.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.

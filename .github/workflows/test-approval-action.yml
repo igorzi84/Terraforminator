@@ -36,6 +36,19 @@ jobs:
               review_id=$(printf '%s' "$response" | jq -er '.review_id')
               printf 'review_id=%s\n' "$review_id" >> "$GITHUB_OUTPUT"
 
+      - name: Check pending review
+        id: pending_check
+        continue-on-error: true
+        uses: ./.github/actions/check-approval
+        with:
+          api_url: http://127.0.0.1:8000
+          review_id: ${{ steps.review.outputs.review_id }}
+
+      - name: Assert pending review is denied
+        env:
+          OUTCOME: ${{ steps.pending_check.outcome }}
+        run: test "$OUTCOME" = "failure"
+
       - name: Approve review
         env:
           REVIEW_ID: ${{ steps.review.outputs.review_id }}
