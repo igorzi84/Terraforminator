@@ -443,13 +443,18 @@ as **Check approval action**, runs on pull requests and through
 1. Starts the Docker Compose stack on the GitHub-hosted runner.
 2. Waits for the local API to respond, retrying startup connection errors.
 3. Creates a review from the checked-in `nginx-create.json` fixture.
-4. Submits a simulated approval identified as an integration test.
-5. Polls until the worker has persisted the approval.
-6. Calls the composite action and expects deployment eligibility to be true.
+4. Calls the composite action while approval is pending and asserts that the
+   action fails. An unexpected success fails the integration job.
+5. Submits a simulated approval identified as an integration test.
+6. Polls until the worker has persisted the approval.
+7. Calls the composite action again and expects deployment eligibility to be
+   true for the same review.
 
-This flow has passed in GitHub Actions. It uses the runner's own API and
-database, needs no externally hosted Terraforminator instance, and does not
-deploy infrastructure. Simulated approval belongs only to this test; normal
+The approved-review path has passed in GitHub Actions. The added pending-review
+assertion has been checked locally; its GitHub Actions run remains unverified.
+The workflow uses the runner's own API and database, needs no externally hosted
+Terraforminator instance, and does not deploy infrastructure.
+Simulated approval belongs only to this test; normal
 deployment reviews still require a human decision. The separate demo workflow
 above checks an existing instance and review supplied by the caller.
 
