@@ -12,6 +12,8 @@ an activity. Structured JSON logs capture completed reviews and submitted human
 decisions. A Prometheus endpoint exposes review, policy-finding, and approval-submission counters,
 review duration, and explanation latency. Docker Compose runs the API, Temporal
 development server, approval worker, and Prometheus together.
+A composite GitHub Action checks a stored review's deployment eligibility;
+a manually triggered workflow demonstrates calling it.
 
 ## Safety boundary
 
@@ -337,8 +339,8 @@ return the explanation.
 | `block` | `false` | `false` | `false` |
 
 Human approval is always required. A policy `block` keeps `can_deploy` false,
-even after human approval. This field reports deployment eligibility; CI/CD
-enforcement is still planned.
+even after human approval. The GitHub Action described below checks this field
+and fails its step unless deployment is allowed.
 
 ### Record a human decision
 
@@ -354,8 +356,8 @@ approval status may still be `pending`: accepting the signal does not wait for
 the persistence activity. Retrieve the review again to observe the saved status
 and recalculated `can_deploy` value. Persistence preserves the deterministic
 policy decision and findings, even when a human approves a policy `"block"`.
-This endpoint submits a decision; it does not deploy infrastructure or provide
-a CI/CD gate yet.
+This endpoint submits a decision; it does not deploy infrastructure. The
+GitHub Action checks the persisted result through `GET /reviews/{review_id}`.
 
 The Temporal server must be available when the API starts. The worker must be
 running to execute approval activities. Docker Compose starts both services;
@@ -382,6 +384,54 @@ returns `409` with `review_not_pending`. While the review is still pending,
 additional submissions can be accepted; the workflow keeps the first received
 record and ignores later signals. Saving the exact same approval record again
 is safe to retry; a different record cannot overwrite the persisted decision.
+
+## GitHub Actions approval gate
+
+The composite action at
+[`.github/actions/check-approval/action.yml`](.github/actions/check-approval/action.yml)
+calls `GET /reviews/{review_id}` on an existing Terraforminator instance. It
+succeeds only when the response contains the boolean `can_deploy: true`.
+Pending approval, rejection, and a deterministic policy block fail the step.
+Connection errors, HTTP errors, missing `can_deploy`, and invalid or empty JSON
+responses also fail the step.
+
+| Input | Description | Default |
+| --- | --- | --- |
+| `api_url` | API base URL, including `http://` or `https://`, without a trailing slash | `http://127.0.0.1:8000` |
+| `review_id` | ID returned by `POST /reviews`; required | None |
+
+The action checks once; it does not wait or poll for human approval. Run it
+after the decision has been persisted. It does not create reviews, approve
+plans, or run Terraform/OpenTofu. A deployment workflow must put its deployment
+step after this check and let a failed check prevent deployment. Keep the saved
+plan artifact and its returned review ID together throughout that workflow.
+
+For a workflow in this repository, check out the repository before calling the
+local action:
+
+```yaml
+steps:
+  - uses: actions/checkout@v7
+  - name: Check deployment approval
+    uses: ./.github/actions/check-approval
+    with:
+      api_url: ${{ inputs.api_url }}
+      review_id: ${{ inputs.review_id }}
+```
+
+This example assumes the calling workflow defines those two inputs. The
+[demo workflow](.github/workflows/demo-approval-gate.yml) provides them through
+`workflow_dispatch`. Once the workflow is available on the default branch,
+open **Actions → Demo approval gate → Run workflow** and supply the API URL
+and an existing review ID. It checks approval only; it has no deployment step.
+Execution against a running Terraforminator instance remains unverified.
+
+The runner needs Bash, `curl`, `jq`, and network access to the API. The demo
+uses `ubuntu-latest`: `127.0.0.1` there refers to the GitHub-hosted runner,
+not your laptop. To check a company-hosted Terraforminator instance, use an
+API address reachable from the chosen runner. An API on a private network
+requires a runner with access to that network. The action does not establish
+network connectivity or configure API authentication.
 
 ## Local Terraform demo
 
@@ -424,6 +474,7 @@ git diff --check
 ## Planned work
 
 - Optional model-backed advisory explanations grounded in policy findings.
-- A CI/CD approval gate using the persisted human decision and policy result.
+- Verify the approval action against a running instance and demonstrate it
+  before a deployment step in CI/CD.
 - A bounded AWS demonstration with MFA, budget alerts, required tags, and a
   verified destroy path.

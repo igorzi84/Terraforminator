@@ -18,7 +18,12 @@ from terraforminator.config import AppSettings
 from terraforminator.deterministic_explanation_provider import (
     DeterministicExplanationProvider,
 )
-from terraforminator.domain.models import ApprovalRecord, PolicyConfig, Review, ReviewResult
+from terraforminator.domain.models import (
+    ApprovalRecord,
+    PolicyConfig,
+    Review,
+    ReviewResult,
+)
 from terraforminator.main import create_app
 from terraforminator.sqlite_review_store import SQLiteReviewStore
 from terraforminator.temporal.activities.approval import ApprovalActivities

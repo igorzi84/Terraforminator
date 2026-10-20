@@ -1,0 +1,25 @@
+name: Demo approval gate
+
+on:
+    workflow_dispatch:
+        inputs:
+            api_url:
+                description: "API URL"
+                required: true
+                type: string
+            review_id:
+                description: "Review ID"
+                required: true
+                type: string
+
+jobs:
+    demo-approval-gate:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
+
+            - name: Can deploy
+              uses: ./.github/actions/check-approval
+              with:
+                  api_url: ${{ inputs.api_url }}
+                  review_id: ${{ inputs.review_id }}

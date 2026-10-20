@@ -1,0 +1,21 @@
+name: Check Terraforminator approval
+description: Fail unless a review allows deployment
+
+inputs:
+  api_url:
+    description: "API URL"
+    required: true
+    default: "http://127.0.0.1:8000"
+  review_id:
+    description: "Review ID"
+    required: true
+
+runs:
+  using: composite
+  steps:
+  - name: Can deploy
+    env:
+        API_URL: ${{ inputs.api_url }}
+        REVIEW_ID: ${{ inputs.review_id }}
+    shell: bash
+    run: curl --fail "$API_URL/reviews/$REVIEW_ID" | jq -e '.can_deploy == true'
