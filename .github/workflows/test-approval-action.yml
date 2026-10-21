@@ -9,19 +9,20 @@ env:
 
 jobs:
   plan-review-integration:
+    name: Plan review — ${{ matrix.case }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - case: safe
+          - case: safe-approved
             plan_path: tests/fixtures/plans/nginx-create.json
             human_decision: approved
             expected_outcome: success
-          - case: blocked
+          - case: blocked-approved
             plan_path: tests/fixtures/plans/aws_sg_update.json
             human_decision: approved
             expected_outcome: failure
-          - case: rejected
+          - case: safe-rejected
             plan_path: tests/fixtures/plans/nginx-create.json
             human_decision: rejected
             expected_outcome: failure
