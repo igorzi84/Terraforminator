@@ -12,8 +12,9 @@ an activity. Structured JSON logs capture completed reviews and submitted human
 decisions. A Prometheus endpoint exposes review, policy-finding, and approval-submission counters,
 review duration, and explanation latency. Docker Compose runs the API, Temporal
 development server, approval worker, and Prometheus together.
-A composite GitHub Action checks a stored review's deployment eligibility;
-a manually triggered workflow demonstrates calling it against an existing API.
+Composite GitHub Actions submit plan JSON for review and check a stored review's
+deployment eligibility. A manually triggered workflow demonstrates checking
+approval against an existing API.
 A separate integration workflow runs the stack and approval check on pull
 requests and can also be triggered manually.
 
@@ -34,20 +35,39 @@ requests and can also be triggered manually.
 Terraform/OpenTofu plan JSON
             |
             v
-       parse_plan()
+ FastAPI POST /reviews (or submit-plan action)
             |
             v
-   ResourceChange objects
+ parse_plan() -> ResourceChange objects
             |
             v
-   evaluate_review()
-      |             |
-      v             v
- policy findings   decision
+ evaluate_review() -> policy findings and decision
             |
             v
-      FastAPI response
+ SQLite review -> deterministic explanation
+            |
+            v
+ Start Temporal approval workflow -> API response
+
+ Human decision via POST /reviews/{review_id}/approval
+            |
+            v
+ Temporal signal -> worker activity
+            |
+            v
+ SQLite approval status and audit record
+            |
+            v
+ GET /reviews/{review_id} -> can_deploy
+            |
+            v
+ check-approval action -> CI/CD eligibility gate
 ```
+
+The approval endpoint returns `202 Accepted` after submitting the signal;
+the worker persists the decision asynchronously. The gate requires a persisted
+human approval and a policy decision other than `block`. The current workflows
+test eligibility without deploying infrastructure.
 
 ## Policies
 
@@ -101,7 +121,7 @@ uv run terraforminator
 The API is available at `http://127.0.0.1:8000`. FastAPI also exposes
 interactive documentation at `/docs`.
 
-### Run with Docker
+### Build the Docker image
 
 With Docker running, build the image from the repository root:
 
@@ -109,32 +129,13 @@ With Docker running, build the image from the repository root:
 docker build -t terraforminator .
 ```
 
-Start the API with a named volume for SQLite storage:
-
-```bash
-docker run --rm \
-  -p 127.0.0.1:8000:8000 \
-  -v terraforminator-data:/data \
-  terraforminator
-```
-
-Open `http://127.0.0.1:8000/docs` to try the API, or `/metrics` to view
-Prometheus output. The app listens on `0.0.0.0:8000` inside the container;
-Docker publishes the port only on your computer's localhost.
-
-The image sets `TERRAFORMINATOR_DB_PATH=/data/terraforminator.db`. Docker
-creates the named volume automatically and reuses it on subsequent runs.
-Press Ctrl+C to stop the API. `--rm` removes the container after it exits,
-but the named volume retains reviews and approval records.
-
-To verify persistence, create a review through `POST /reviews` with the plan
-JSON wrapped in a `plan` field. Save the returned `review_id`, stop the
-container, and run the same command again. Fetch
-`GET /reviews/{review_id}` to confirm the review is still available.
-
-The named volume is managed by Docker. On macOS with Docker Desktop, it lives
-inside Docker's Linux VM rather than in the repository. Inspect it with
-`docker volume inspect terraforminator-data`.
+The image contains the API and approval worker code. The API requires a
+reachable Temporal server during startup, and a worker must run to persist
+human decisions. Inside a container, the default `localhost:7233` points to
+that container, so running the API image alone does not start the full system.
+Use Docker Compose below to configure service networking and shared SQLite
+storage. Compose builds the image automatically, so the separate build above
+is optional.
 
 ### Run with Docker Compose
 
@@ -204,6 +205,12 @@ additional space.
 
 Press Ctrl+C to stop the services, or run `docker compose down` to stop and
 remove their containers and network while retaining all three named volumes.
+
+To verify review persistence, create a review using the API example below and
+save its `review_id`. Run `docker compose down`, then `docker compose up --build`
+without removing the volumes. Fetch `GET /reviews/{review_id}` to confirm the
+review is still available. Docker manages the volumes; on macOS with Docker
+Desktop, they live inside Docker's Linux VM rather than in the repository.
 
 ### Host configuration
 
@@ -387,7 +394,47 @@ additional submissions can be accepted; the workflow keeps the first received
 record and ignores later signals. Saving the exact same approval record again
 is safe to retry; a different record cannot overwrite the persisted decision.
 
-## GitHub Actions approval gate
+## GitHub Actions plan submission and approval gate
+
+### Submit a plan
+
+The composite action at
+[`.github/actions/submit-plan/action.yml`](.github/actions/submit-plan/action.yml)
+reads a plan JSON file, wraps it in the API request body, and calls
+`POST /reviews` on an existing Terraforminator instance.
+
+| Input | Description |
+| --- | --- |
+| `api_url` | Required API base URL, including `http://` or `https://`, without a trailing slash |
+| `plan_path` | Required path to a Terraform/OpenTofu plan JSON file, relative to the working directory or absolute |
+
+| Output | Description |
+| --- | --- |
+| `review_id` | Created review's ID, used by the approval check |
+| `plan_hash` | SHA-256 hash of the parsed plan serialized as canonical JSON by Terraforminator |
+
+Check out the repository before calling the local action. This example assumes
+the API is running on the same runner, as in the integration workflow:
+
+```yaml
+steps:
+  - uses: actions/checkout@v7
+  - name: Submit plan for review
+    id: review
+    uses: ./.github/actions/submit-plan
+    with:
+      api_url: http://127.0.0.1:8000
+      plan_path: tests/fixtures/plans/nginx-create.json
+```
+
+Later steps can read `${{ steps.review.outputs.review_id }}` and
+`${{ steps.review.outputs.plan_hash }}`. The input must be JSON exported with
+`terraform show -json` or `tofu show -json`, rather than a binary saved plan.
+HTTP errors, invalid JSON responses, and missing or null output fields fail
+the submission step. Submission creates a pending review; a human decision
+must still be persisted before checking deployment eligibility.
+
+### Check approval
 
 The composite action at
 [`.github/actions/check-approval/action.yml`](.github/actions/check-approval/action.yml)
@@ -434,39 +481,50 @@ API address reachable from the chosen runner. An API on a private network
 requires a runner with access to that network. The action does not establish
 network connectivity or configure API authentication.
 
-### Approval action integration test
+### Plan review integration tests
 
 The [integration workflow](.github/workflows/test-approval-action.yml), displayed
-as **Check approval action**, runs on pull requests and through
-`workflow_dispatch`. Its `approval-integration` job:
+as **Plan review integration**, runs on pull requests and through
+`workflow_dispatch`. Its `plan-review-integration` job uses a two-case matrix:
+
+| Case | Plan fixture | Expected gate outcome after simulated approval |
+| --- | --- | --- |
+| `safe` | `nginx-create.json` | Success: deployment is eligible |
+| `blocked` | `aws_sg_update.json` | Failure: the deterministic policy block still prevents deployment |
+
+Each matrix case runs on a separate GitHub-hosted runner with its own Compose
+stack, database, and volumes. The jobs can run in parallel subject to available
+runner concurrency; `fail-fast: false` lets either case finish if the other fails.
+Each case:
 
 1. Starts the Docker Compose stack on the GitHub-hosted runner.
 2. Waits for the local API to respond, retrying startup connection errors.
-3. Creates a review from the checked-in `nginx-create.json` fixture.
+3. Calls `submit-plan` with its fixture and captures the returned review ID.
 4. Calls the composite action while approval is pending and asserts that the
    action fails. An unexpected success fails the integration job.
 5. Submits a simulated approval identified as an integration test.
 6. Polls until the worker has persisted the approval.
-7. Calls the composite action again and expects deployment eligibility to be
-   true for the same review.
+7. Calls `check-approval` again and compares its step outcome with the matrix's
+   expected outcome. An expected policy denial passes the test; an unexpected
+   gate result fails the job.
 
-Both the pending-review denial and approved-review success paths have passed
-in GitHub Actions.
 The workflow uses the runner's own API and database, needs no externally hosted
 Terraforminator instance, and does not deploy infrastructure.
 Simulated approval belongs only to this test; normal
 deployment reviews still require a human decision. The separate demo workflow
 above checks an existing instance and review supplied by the caller.
 
-To run the integration test manually, open **Actions → Check approval action →
+To run the integration tests manually, open **Actions → Plan review integration →
 Run workflow** and choose the branch to test. No API URL or review ID inputs
 are needed.
 
-For `main` protection, configure the repository ruleset to require both `test`
-from the [tests workflow](.github/workflows/tests.yml) and
-`approval-integration`. Running workflows on pull requests does not by itself
-make their checks mandatory; select both checks in the ruleset and keep their
-job IDs stable.
+For `main` protection, configure the repository ruleset to require `test`
+from the [tests workflow](.github/workflows/tests.yml) and both matrix checks
+from `plan-review-integration`. After the workflow runs, select the safe and
+blocked checks using their displayed names in the ruleset. Replace the old
+`approval-integration` requirement if present. Running workflows on pull
+requests does not by itself make their checks mandatory; keep the job ID and
+matrix values stable after configuring the required checks.
 
 ## Local Terraform demo
 

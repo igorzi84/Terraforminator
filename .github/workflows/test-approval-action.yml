@@ -15,9 +15,15 @@ jobs:
         include:
           - case: safe
             plan_path: tests/fixtures/plans/nginx-create.json
+            human_decision: approved
             expected_outcome: success
           - case: blocked
             plan_path: tests/fixtures/plans/aws_sg_update.json
+            human_decision: approved
+            expected_outcome: failure
+          - case: rejected
+            plan_path: tests/fixtures/plans/nginx-create.json
+            human_decision: rejected
             expected_outcome: failure
     runs-on: ubuntu-latest
     steps:
@@ -57,26 +63,30 @@ jobs:
           OUTCOME: ${{ steps.pending_check.outcome }}
         run: test "$OUTCOME" = "failure"
 
-      - name: Approve review
+      - name: Submit human decision
         env:
           REVIEW_ID: ${{ steps.review.outputs.review_id }}
+          HUMAN_DECISION: ${{ matrix.human_decision }}
         shell: bash
         run: |
-          curl --fail --silent --show-error \
+          jq -n --arg status "$HUMAN_DECISION" \
+            '{status: $status, reviewer: "integration-test", reason: "Simulated CI decision"}' |
+            curl --fail --silent --show-error \
               -H 'Content-Type: application/json' \
-              --data '{"status":"approved","reviewer":"integration-test","reason":"Simulated approval for CI integration test"}' \
+              --data-binary @- \
               "$API_URL/reviews/$REVIEW_ID/approval"
 
       - name: Wait for approval persistence
         env:
           REVIEW_ID: ${{ steps.review.outputs.review_id }}
+          HUMAN_DECISION: ${{ matrix.human_decision }}
         shell: bash
         run: |
           for attempt in {1..15}; do
             response=$(curl --fail --silent --show-error --max-time 5 \
               "$API_URL/reviews/$REVIEW_ID")
 
-            if printf '%s' "$response" | jq -e '.approval_status == "approved"' > /dev/null; then
+            if printf '%s' "$response" | jq -e --arg status "$HUMAN_DECISION" '.approval_status == $status' > /dev/null; then
               exit 0
             fi
 
