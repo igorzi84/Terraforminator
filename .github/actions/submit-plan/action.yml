@@ -1,0 +1,37 @@
+name: Submit plan
+description: Submits terraform plan to Terraforminator
+
+inputs:
+  api_url:
+    description: "API URL"
+    required: true
+  plan_path:
+    description: Terraform plan JSON file
+    required: true
+
+outputs:
+  review_id:
+    description: Review ID
+    value: ${{ steps.submit.outputs.review_id}}
+  plan_hash:
+    description: Plan hash
+    value: ${{ steps.submit.outputs.plan_hash}}
+
+runs:
+  using: composite
+  steps:
+    - name: Submit plan
+      id: submit
+      env:
+        API_URL: ${{ inputs.api_url }}
+        PLAN_PATH: ${{ inputs.plan_path }}
+      shell: bash
+      run: |
+        response=$(jq '{plan: .}' "$PLAN_PATH" |
+          curl --fail --show-error \
+            -H 'Content-Type: application/json' \
+            "$API_URL/reviews" --data-binary @-)
+        review_id=$(printf '%s' "$response" | jq -er '.review_id')
+        plan_hash=$(printf '%s' "$response" | jq -er '.plan_hash')
+        printf 'review_id=%s\n' "$review_id" >> "$GITHUB_OUTPUT"
+        printf 'plan_hash=%s\n' "$plan_hash" >> "$GITHUB_OUTPUT"

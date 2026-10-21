@@ -4,6 +4,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  API_URL: http://127.0.0.1:8000
+
 jobs:
   approval-integration:
     runs-on: ubuntu-latest
@@ -22,26 +25,22 @@ jobs:
           --connect-timeout 2 \
           --max-time 5 \
           --output /dev/null \
-          http://127.0.0.1:8000/openapi.json
+          "$API_URL/openapi.json"
 
       - name: Create a review
         id: review
-        shell: bash
-        run: |
-          response=$(jq '{plan: .}' tests/fixtures/plans/nginx-create.json |
-            curl --fail --silent --show-error \
-              -H 'Content-Type: application/json' \
-              --data-binary @- \
-              http://127.0.0.1:8000/reviews)
-              review_id=$(printf '%s' "$response" | jq -er '.review_id')
-              printf 'review_id=%s\n' "$review_id" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/submit-plan
+        with:
+          api_url: ${{ env.API_URL }}
+          plan_path: tests/fixtures/plans/nginx-create.json
+
 
       - name: Check pending review
         id: pending_check
         continue-on-error: true
         uses: ./.github/actions/check-approval
         with:
-          api_url: http://127.0.0.1:8000
+          api_url: ${{ env.API_URL }}
           review_id: ${{ steps.review.outputs.review_id }}
 
       - name: Assert pending review is denied
@@ -57,7 +56,7 @@ jobs:
           curl --fail --silent --show-error \
               -H 'Content-Type: application/json' \
               --data '{"status":"approved","reviewer":"integration-test","reason":"Simulated approval for CI integration test"}' \
-              http://127.0.0.1:8000/reviews/"$REVIEW_ID"/approval
+              "$API_URL/reviews/$REVIEW_ID/approval"
 
       - name: Wait for approval persistence
         env:
@@ -66,7 +65,7 @@ jobs:
         run: |
           for attempt in {1..15}; do
             response=$(curl --fail --silent --show-error --max-time 5 \
-              "http://127.0.0.1:8000/reviews/$REVIEW_ID")
+              "$API_URL/reviews/$REVIEW_ID")
 
             if printf '%s' "$response" | jq -e '.approval_status == "approved"' > /dev/null; then
               exit 0
@@ -81,5 +80,5 @@ jobs:
       - name: Can deploy
         uses: ./.github/actions/check-approval
         with:
-          api_url: http://127.0.0.1:8000
+          api_url: ${{ env.API_URL }}
           review_id: ${{ steps.review.outputs.review_id }}
