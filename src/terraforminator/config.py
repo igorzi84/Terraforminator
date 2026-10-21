@@ -13,6 +13,7 @@ class AppSettings:
     database_path: Path
     host: str
     temporal_address: str
+    explanation_provider: str
 
 
 def load_app_settings() -> AppSettings:
@@ -36,8 +37,19 @@ def load_app_settings() -> AppSettings:
         if not temporal_address_var.strip():
             raise ValueError("TERRAFORMINATOR_TEMPORAL_ADDRESS must not be blank")
         temporal_address = temporal_address_var.strip()
+
+    explanation_provider = "deterministic"
+    explanation_provider_var = os.getenv("TERRAFORMINATOR_EXPLANATION_PROVIDER")
+    if explanation_provider_var is not None:
+        if not explanation_provider_var.strip():
+            raise ValueError("TERRAFORMINATOR_EXPLANATION_PROVIDER must not be blank")
+        explanation_provider = explanation_provider_var.strip()
+
     settings = AppSettings(
-        database_path=database_path, host=host, temporal_address=temporal_address
+        database_path=database_path,
+        host=host,
+        temporal_address=temporal_address,
+        explanation_provider=explanation_provider,
     )
 
     return settings

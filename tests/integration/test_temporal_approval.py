@@ -15,14 +15,14 @@ from temporalio.worker.workflow_sandbox import (
 )
 
 from terraforminator.config import AppSettings
-from terraforminator.deterministic_explanation_provider import (
-    DeterministicExplanationProvider,
-)
 from terraforminator.domain.models import (
     ApprovalRecord,
     PolicyConfig,
     Review,
     ReviewResult,
+)
+from terraforminator.explanation_providers.deterministic import (
+    DeterministicExplanationProvider,
 )
 from terraforminator.main import create_app
 from terraforminator.sqlite_review_store import SQLiteReviewStore
@@ -73,6 +73,7 @@ def test_temporal_approval(
                             database_path=tmp_path / "reviews.db",
                             host="127.0.0.1",
                             temporal_address=env.client.service_client.config.target_host,
+                            explanation_provider="deterministic",
                         ),
                         review_store=store,
                         workflow_starter=TemporalApprovalWorkflowStarter(env.client),

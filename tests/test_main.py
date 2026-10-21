@@ -11,16 +11,16 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import ActivityEnvironment
 
 from terraforminator.config import AppSettings
-from terraforminator.deterministic_explanation_provider import (
-    DeterministicExplanationProvider,
-)
 from terraforminator.domain.models import (
     ApprovalRecord,
     PolicyConfig,
     ReviewResult,
 )
 from terraforminator.domain.plan_hash import hash_plan
-from terraforminator.main import create_app
+from terraforminator.explanation_providers.deterministic import (
+    DeterministicExplanationProvider,
+)
+from terraforminator.main import create_app, create_explanation_provider
 from terraforminator.review_store import InMemoryReviewStore
 from terraforminator.sqlite_review_store import SQLiteReviewStore
 from terraforminator.temporal.activities.approval import ApprovalActivities
@@ -66,6 +66,7 @@ TEST_SETTINGS = AppSettings(
     database_path=Path("unused-test.db"),
     host="127.0.0.1",
     temporal_address="temporal.test:7233",
+    explanation_provider="deterministic"
 )
 
 
@@ -938,3 +939,8 @@ def test_bad_approval_workflow_starter(aws_sg_update_plan):
         )
         is None
     )
+
+
+def test_create_explanation_provider_unknown():
+    with pytest.raises(ValueError, match="unknown is unsupported value"):
+        create_explanation_provider("unknown")

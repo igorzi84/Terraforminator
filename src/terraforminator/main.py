@@ -20,16 +20,17 @@ from terraforminator.api.v1.schemas import (
     StoredReviewResponse,
 )
 from terraforminator.config import AppSettings, load_app_settings, load_policy_config
-from terraforminator.deterministic_explanation_provider import (
-    DeterministicExplanationProvider,
-)
 from terraforminator.domain.deployment import can_deploy
 from terraforminator.domain.errors import InvalidPlanError
 from terraforminator.domain.models import ApprovalRecord, PolicyConfig, Review
 from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.domain.plan_parser import parse_plan
 from terraforminator.domain.review import evaluate_review
-from terraforminator.explanation_provider import ExplanationProvider
+from terraforminator.explanation_providers.base import ExplanationProvider
+from terraforminator.explanation_providers.deterministic import (
+    DeterministicExplanationProvider,
+)
+from terraforminator.explanation_providers.ollama import OllamaExplanationProvider
 from terraforminator.logging_config import configure_logging
 from terraforminator.metrics import ReviewMetrics
 from terraforminator.review_store import InMemoryReviewStore, ReviewStore
@@ -65,6 +66,18 @@ def to_stored_review_response(review: Review) -> StoredReviewResponse:
         approval_status=review.approval_status,
         can_deploy=deploy,
     )
+
+
+def create_explanation_provider(provider_name: str) -> ExplanationProvider:
+    map = {
+        "deterministic": DeterministicExplanationProvider(),
+        "ollama": OllamaExplanationProvider(),
+    }
+    try:
+        provider = map[provider_name]
+    except KeyError:
+        raise ValueError(f"{provider_name} is unsupported value.")
+    return provider
 
 
 def create_app(
@@ -262,7 +275,7 @@ def main() -> None:
 
     app = create_app(
         policy_config,
-        DeterministicExplanationProvider(),
+        explanation_provider=create_explanation_provider(settings.explanation_provider),
         review_store=review_store,
         settings=settings,
     )
