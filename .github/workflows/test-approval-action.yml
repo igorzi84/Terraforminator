@@ -1,4 +1,4 @@
-name: Check approval action
+name: Plan review integration
 
 on:
   pull_request:
@@ -8,7 +8,17 @@ env:
   API_URL: http://127.0.0.1:8000
 
 jobs:
-  approval-integration:
+  plan-review-integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: safe
+            plan_path: tests/fixtures/plans/nginx-create.json
+            expected_outcome: success
+          - case: blocked
+            plan_path: tests/fixtures/plans/aws_sg_update.json
+            expected_outcome: failure
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -32,8 +42,7 @@ jobs:
         uses: ./.github/actions/submit-plan
         with:
           api_url: ${{ env.API_URL }}
-          plan_path: tests/fixtures/plans/nginx-create.json
-
+          plan_path: ${{ matrix.plan_path }}
 
       - name: Check pending review
         id: pending_check
@@ -78,7 +87,15 @@ jobs:
           exit 1
 
       - name: Can deploy
+        id: final_check
+        continue-on-error: true
         uses: ./.github/actions/check-approval
         with:
           api_url: ${{ env.API_URL }}
           review_id: ${{ steps.review.outputs.review_id }}
+
+      - name: Assert final gate outcome
+        env:
+          ACTUAL: ${{ steps.final_check.outcome }}
+          EXPECTED: ${{ matrix.expected_outcome }}
+        run: test "$ACTUAL" = "$EXPECTED"
