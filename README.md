@@ -450,8 +450,8 @@ as **Check approval action**, runs on pull requests and through
 7. Calls the composite action again and expects deployment eligibility to be
    true for the same review.
 
-The approved-review path has passed in GitHub Actions. The added pending-review
-assertion has been checked locally; its GitHub Actions run remains unverified.
+Both the pending-review denial and approved-review success paths have passed
+in GitHub Actions.
 The workflow uses the runner's own API and database, needs no externally hosted
 Terraforminator instance, and does not deploy infrastructure.
 Simulated approval belongs only to this test; normal
