@@ -20,6 +20,7 @@ from terraforminator.domain.plan_hash import hash_plan
 from terraforminator.explanation_providers.deterministic import (
     DeterministicExplanationProvider,
 )
+from terraforminator.explanation_providers.ollama import OllamaExplanationProvider
 from terraforminator.main import create_app, create_explanation_provider
 from terraforminator.review_store import InMemoryReviewStore
 from terraforminator.sqlite_review_store import SQLiteReviewStore
@@ -690,22 +691,48 @@ def test_sqlite_database(tmp_path, create_plan):
     assert reopened_review.json() == expected_review
 
 
-def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
+def test_explanation_provider_failure_uses_fallback(aws_sg_update_plan, caplog):
+    starter = FakeApprovalWorkflowStarter()
+    store = InMemoryReviewStore()
     custom_app = create_app(
         PolicyConfig(enabled_policy_ids=frozenset({"public-inbound-access"})),
         BadExplanationProvider(),
         settings=TEST_SETTINGS,
-        workflow_starter=FakeApprovalWorkflowStarter(),
+        workflow_starter=starter,
+        review_store=store,
     )
     custom_client = TestClient(custom_app)
 
     logger = logging.getLogger("terraforminator")
     logger.addHandler(caplog.handler)
     try:
-        with pytest.raises(RuntimeError):
-            custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
+        response = custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
     finally:
         logger.removeHandler(caplog.handler)
+
+    assert response.status_code == 200
+    body = response.json()
+    review_id = UUID(body["review_id"])
+    stored_review = store.get_review(review_id)
+    assert body["decision"] == stored_review.result.decision == "block"
+    assert body["findings"] == [
+        {
+            "id": "public-inbound-access",
+            "severity": "high",
+            "resource_address": "aws_security_group.web",
+            "evidence": "ingress.cidr_blocks contains 0.0.0.0/0",
+            "remediation": "Restrict ingress to approved networks.",
+        }
+    ]
+    assert body["explanation"] == DeterministicExplanationProvider().explain(
+        stored_review.result
+    )
+    assert starter.inputs == [
+        ApprovalWorkflowInput(review_id=str(review_id), policy_result="block")
+    ]
+    persisted_response = custom_client.get(f"/reviews/{review_id}")
+    assert persisted_response.json()["approval_status"] == "pending"
+    assert persisted_response.json()["can_deploy"] is False
 
     record = next(
         record
@@ -717,13 +744,13 @@ def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
     assert record.plan_hash == hash_plan(aws_sg_update_plan)
     assert record.policy_result == "block"
 
-    # Failed explanations must not count as completed reviews.
+    # A completed review with a fallback still counts as successful.
     assert (
         custom_app.state.metrics.registry.get_sample_value(
             "terraforminator_reviews_total",
             {"policy_result": "block"},
         )
-        is None
+        == 1
     )
 
     assert (
@@ -731,7 +758,7 @@ def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
             "terraforminator_review_duration_seconds_count",
             {"policy_result": "block"},
         )
-        is None
+        == 1
     )
 
     assert (
@@ -740,6 +767,13 @@ def test_explanation_provider_failure_propagates(aws_sg_update_plan, caplog):
             {"provider_name": "bad provider"},
         )
         is None
+    )
+    assert (
+        custom_app.state.metrics.registry.get_sample_value(
+            "terraforminator_explanation_duration_seconds_count",
+            {"provider_name": "deterministic"},
+        )
+        == 1
     )
 
 
@@ -868,15 +902,15 @@ def test_record_findings(aws_sg_update_plan):
     )
 
 
-def test_record_findings_absent_on_error(aws_sg_update_plan):
+def test_record_findings_absent_on_workflow_error(aws_sg_update_plan):
     test_app = create_app(
         PolicyConfig(),
-        BadExplanationProvider(),
+        FakeExplanationProvider(),
         settings=TEST_SETTINGS,
-        workflow_starter=FakeApprovalWorkflowStarter(),
+        workflow_starter=BadApprovalWorkflowStarter(),
     )
     test_client = TestClient(test_app)
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="Temporal unavailable"):
         test_client.post("/reviews", json={"plan": aws_sg_update_plan})
 
     assert (
@@ -944,3 +978,26 @@ def test_bad_approval_workflow_starter(aws_sg_update_plan):
 def test_create_explanation_provider_unknown():
     with pytest.raises(ValueError, match="unknown is unsupported value"):
         create_explanation_provider("unknown")
+
+
+def test_explanation_provider_fallback(monkeypatch, create_plan):
+    provider = OllamaExplanationProvider()
+    ask = Mock(side_effect=TimeoutError("Ollama unavailable"))
+    monkeypatch.setattr(provider, "ask", ask)
+    test_app = create_app(
+        PolicyConfig(),
+        provider,
+        settings=TEST_SETTINGS,
+        workflow_starter=FakeApprovalWorkflowStarter(),
+    )
+    test_client = TestClient(test_app)
+    response = test_client.post("/reviews", json={"plan": create_plan})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision"] == "approve"
+    assert body["findings"] == []
+    assert body["explanation"] == DeterministicExplanationProvider().explain(
+        ReviewResult(decision="approve", findings=())
+    )
+    ask.assert_called_once()

@@ -148,7 +148,13 @@ def create_app(
                     "policy_result": result.decision,
                 },
             )
-            raise
+            fallback_provider = DeterministicExplanationProvider()
+            fallback_started_at = time.monotonic()
+            explanation = await run_in_threadpool(fallback_provider.explain, result)
+            metrics.record_explanation_duration(
+                provider_name=fallback_provider.name,
+                seconds=time.monotonic() - fallback_started_at,
+            )
         workflow_id = None
         if workflow_starter is not None:
             input = ApprovalWorkflowInput(

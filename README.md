@@ -289,8 +289,12 @@ addresses are kept out of metric labels.
 Review duration measures elapsed time from the start of the review handler
 through parsing, policy evaluation, storage, and explanation. Explanation
 latency measures only the provider's `explain()` call. Both use a monotonic
-clock and record successful operations only; a failed explanation records
-neither duration. Histograms expose `_bucket`, `_count`, and `_sum` samples,
+clock and record successful operations only. If the configured explanation
+provider fails, the API logs the error and uses a deterministic explanation
+from the same policy result, then continues the approval workflow. The failed
+provider call records no explanation duration; the successful fallback records
+its own duration under `deterministic`, and the completed review records its
+full duration. Histograms expose `_bucket`, `_count`, and `_sum` samples,
 with durations measured in seconds. Provider labels use the provider's explicit,
 stable `name`.
 
