@@ -42,6 +42,13 @@ class ReviewMetrics:
             registry=self.registry,
         )
 
+        self.explanation_fallbacks_total = Counter(
+            "terraforminator_explanation_fallbacks_total",
+            "Total fallback events per provider",
+            labelnames=("provider_name",),
+            registry=self.registry,
+        )
+
     def record_review(self, policy_result: ReviewDecision) -> None:
         self.reviews_total.labels(policy_result=policy_result).inc()
 
@@ -60,3 +67,6 @@ class ReviewMetrics:
         self.policy_findings_total.labels(
             policy_id=finding.id, severity=finding.severity
         ).inc()
+
+    def record_explanation_fallback(self, provider_name: str) -> None:
+        self.explanation_fallbacks_total.labels(provider_name=provider_name).inc()
