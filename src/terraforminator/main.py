@@ -148,6 +148,7 @@ def create_app(
                     "policy_result": result.decision,
                 },
             )
+            metrics.record_explanation_fallback(explanation_provider.name)
             fallback_provider = DeterministicExplanationProvider()
             fallback_started_at = time.monotonic()
             explanation = await run_in_threadpool(fallback_provider.explain, result)

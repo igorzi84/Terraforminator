@@ -744,6 +744,14 @@ def test_explanation_provider_failure_uses_fallback(aws_sg_update_plan, caplog):
     assert record.plan_hash == hash_plan(aws_sg_update_plan)
     assert record.policy_result == "block"
 
+    assert (
+        custom_app.state.metrics.registry.get_sample_value(
+            "terraforminator_explanation_fallbacks_total",
+            {"provider_name": "bad provider"},
+        )
+        == 1
+    )
+
     # A completed review with a fallback still counts as successful.
     assert (
         custom_app.state.metrics.registry.get_sample_value(
