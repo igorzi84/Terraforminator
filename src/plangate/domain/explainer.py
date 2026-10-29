@@ -1,4 +1,4 @@
-from terraforminator.domain.models import ReviewResult
+from plangate.domain.models import ReviewResult
 
 
 def explain_review(review: ReviewResult) -> str:

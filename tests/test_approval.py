@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from terraforminator.domain.approval import (
+from plangate.domain.approval import (
     approve_review,
     record_approval,
     record_rejection,

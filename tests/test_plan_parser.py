@@ -1,7 +1,7 @@
 import pytest
 
-from terraforminator.domain.errors import InvalidPlanError
-from terraforminator.domain.plan_parser import parse_plan
+from plangate.domain.errors import InvalidPlanError
+from plangate.domain.plan_parser import parse_plan
 
 
 def test_parse_plan_create(create_plan):

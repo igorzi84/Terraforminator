@@ -8,6 +8,6 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: terraforminator
+  - job_name: plangate
     static_configs:
       - targets: ["api:8000"]

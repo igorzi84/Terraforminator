@@ -1,5 +1,5 @@
-from terraforminator.domain.decision import decide_review
-from terraforminator.domain.models import Finding
+from plangate.domain.decision import decide_review
+from plangate.domain.models import Finding
 
 LOW_SEVERITY_FINDING = Finding(
     id="test-approve",

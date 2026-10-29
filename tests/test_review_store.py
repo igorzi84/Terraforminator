@@ -2,8 +2,8 @@ from uuid import uuid4
 
 import pytest
 
-from terraforminator.domain.models import ApprovalRecord, Review, ReviewResult
-from terraforminator.review_store import InMemoryReviewStore
+from plangate.domain.models import ApprovalRecord, Review, ReviewResult
+from plangate.review_store import InMemoryReviewStore
 
 
 @pytest.fixture(scope="function")

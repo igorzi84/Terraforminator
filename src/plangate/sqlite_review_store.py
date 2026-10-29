@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
-from terraforminator.domain.models import ApprovalRecord, Finding, Review, ReviewResult
+from plangate.domain.models import ApprovalRecord, Finding, Review, ReviewResult
 
 
 class SQLiteReviewStore:

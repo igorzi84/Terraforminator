@@ -2,11 +2,11 @@ services:
   api:
     build: .
     environment:
-      - TERRAFORMINATOR_TEMPORAL_ADDRESS=temporal:7233
+      - PLANGATE_TEMPORAL_ADDRESS=temporal:7233
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - terraforminator-data:/data
+      - plangate-data:/data
     depends_on:
       temporal:
         condition: service_healthy
@@ -58,16 +58,16 @@ services:
         "--no-sync",
         "python",
         "-m",
-        "terraforminator.temporal.worker",
+        "plangate.temporal.worker",
       ]
     environment:
-      TERRAFORMINATOR_TEMPORAL_ADDRESS: temporal:7233
+      PLANGATE_TEMPORAL_ADDRESS: temporal:7233
     volumes:
-      - terraforminator-data:/data
+      - plangate-data:/data
     depends_on:
       temporal:
         condition: service_healthy
 volumes:
-  terraforminator-data:
+  plangate-data:
   prometheus-data:
   temporal-data:

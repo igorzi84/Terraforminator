@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
-from terraforminator.api.v1.schemas import (
+from plangate.api.v1.schemas import (
     ApprovalRecordResponse,
     ApprovalRequest,
     FindingResponse,
@@ -19,27 +19,27 @@ from terraforminator.api.v1.schemas import (
     ReviewResponse,
     StoredReviewResponse,
 )
-from terraforminator.config import AppSettings, load_app_settings, load_policy_config
-from terraforminator.domain.deployment import can_deploy
-from terraforminator.domain.errors import InvalidPlanError
-from terraforminator.domain.models import ApprovalRecord, PolicyConfig, Review
-from terraforminator.domain.plan_hash import hash_plan
-from terraforminator.domain.plan_parser import parse_plan
-from terraforminator.domain.review import evaluate_review
-from terraforminator.explanation_providers.base import ExplanationProvider
-from terraforminator.explanation_providers.deterministic import (
+from plangate.config import AppSettings, load_app_settings, load_policy_config
+from plangate.domain.deployment import can_deploy
+from plangate.domain.errors import InvalidPlanError
+from plangate.domain.models import ApprovalRecord, PolicyConfig, Review
+from plangate.domain.plan_hash import hash_plan
+from plangate.domain.plan_parser import parse_plan
+from plangate.domain.review import evaluate_review
+from plangate.explanation_providers.base import ExplanationProvider
+from plangate.explanation_providers.deterministic import (
     DeterministicExplanationProvider,
 )
-from terraforminator.explanation_providers.ollama import OllamaExplanationProvider
-from terraforminator.logging_config import configure_logging
-from terraforminator.metrics import ReviewMetrics
-from terraforminator.review_store import InMemoryReviewStore, ReviewStore
-from terraforminator.sqlite_review_store import SQLiteReviewStore
-from terraforminator.temporal.workflow_starter import (
+from plangate.explanation_providers.ollama import OllamaExplanationProvider
+from plangate.logging_config import configure_logging
+from plangate.metrics import ReviewMetrics
+from plangate.review_store import InMemoryReviewStore, ReviewStore
+from plangate.sqlite_review_store import SQLiteReviewStore
+from plangate.temporal.workflow_starter import (
     ApprovalWorkflowStarter,
     TemporalApprovalWorkflowStarter,
 )
-from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
+from plangate.temporal.workflows.models import ApprovalWorkflowInput
 
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
 POLICY_CONFIG_PATH = CONFIG_DIR / "policies.toml"
@@ -97,7 +97,7 @@ def create_app(
             workflow_starter = TemporalApprovalWorkflowStarter(client)
         yield
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(title="PlanGate", lifespan=lifespan)
     metrics = ReviewMetrics()
     app.state.metrics = metrics
 

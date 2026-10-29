@@ -1,6 +1,6 @@
-# Terraforminator
+# PlanGate
 
-Terraforminator reviews Terraform or OpenTofu plan JSON before deployment. It
+PlanGate reviews Terraform or OpenTofu plan JSON before deployment. It
 normalizes resource changes, runs deterministic policy checks, and returns a
 review decision with concrete findings.
 
@@ -20,7 +20,7 @@ requests and can also be triggered manually.
 
 ## Safety boundary
 
-- Terraforminator never runs `terraform apply` or `tofu apply`.
+- PlanGate never runs `terraform apply` or `tofu apply`.
 - Deterministic Python policies produce findings and decide `approve`,
   `needs_review`, or `block`.
 - `approve` means no enabled deterministic policy found a violation. It is not
@@ -109,13 +109,13 @@ temporal server start-dev
 In another terminal, start the worker from the repository root:
 
 ```bash
-uv run python -m terraforminator.temporal.worker
+uv run python -m plangate.temporal.worker
 ```
 
 Then start the API in a third terminal from the same directory:
 
 ```bash
-uv run terraforminator
+uv run plangate
 ```
 
 The API is available at `http://127.0.0.1:8000`. FastAPI also exposes
@@ -126,7 +126,7 @@ interactive documentation at `/docs`.
 With Docker running, build the image from the repository root:
 
 ```bash
-docker build -t terraforminator .
+docker build -t plangate .
 ```
 
 The image contains the API and approval worker code. The API requires a
@@ -165,12 +165,12 @@ as the `temporal` user.
 `api:8000` every 15 seconds. The `api` hostname is the Compose service name;
 Prometheus reaches it through the shared container network.
 
-Open `http://127.0.0.1:9090/targets` and confirm the `terraforminator` target is
+Open `http://127.0.0.1:9090/targets` and confirm the `plangate` target is
 **UP**. Then create a review through the API, wait about 15 seconds, and execute
 this query at `http://127.0.0.1:9090/query`:
 
 ```promql
-terraforminator_reviews_total
+plangate_reviews_total
 ```
 
 The counter for the review's `policy_result` should increase by one. Before the
@@ -178,8 +178,8 @@ first successfully completed review, this query may return no data.
 
 Compose uses three named volumes:
 
-- `terraforminator-data` is mounted at `/data` in both the API and worker. They
-  share `/data/terraforminator.db` for reviews and approval audit records.
+- `plangate-data` is mounted at `/data` in both the API and worker. They
+  share `/data/plangate.db` for reviews and approval audit records.
 - `temporal-data` is mounted at `/data` in Temporal. Its separate
   `/data/temporal.db` stores workflow history across container recreation.
 - `prometheus-data` is mounted at `/prometheus` for metric history.
@@ -214,11 +214,11 @@ Desktop, they live inside Docker's Linux VM rather than in the repository.
 
 ### Host configuration
 
-The API listens on `127.0.0.1:8000` by default. Set `TERRAFORMINATOR_HOST`
+The API listens on `127.0.0.1:8000` by default. Set `PLANGATE_HOST`
 to change the bind address, for example when running inside a container:
 
 ```bash
-TERRAFORMINATOR_HOST=0.0.0.0 uv run terraforminator
+PLANGATE_HOST=0.0.0.0 uv run plangate
 ```
 
 `0.0.0.0` listens on all IPv4 interfaces. Inside a container, this allows
@@ -228,11 +228,11 @@ rejected.
 
 ### Database configuration
 
-The local API defaults to `terraforminator.db` in the repository root. Set
-`TERRAFORMINATOR_DB_PATH` to use a different database file:
+The local API defaults to `plangate.db` in the repository root. Set
+`PLANGATE_DB_PATH` to use a different database file:
 
 ```bash
-TERRAFORMINATOR_DB_PATH=/tmp/terraforminator.db uv run terraforminator
+PLANGATE_DB_PATH=/tmp/plangate.db uv run plangate
 ```
 
 The parent directory must already exist and be writable. SQLite creates the
@@ -242,25 +242,25 @@ Database files matching `*.db` are ignored by Git.
 
 ### LLM provider configuration
 
-`TERRAFORMINATOR_LLM_PROVIDER` selects `deterministic` (the default) or `ollama`.
+`PLANGATE_LLM_PROVIDER` selects `deterministic` (the default) or `ollama`.
 Configure the provider through these environment variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `TERRAFORMINATOR_LLM_PROVIDER` | `deterministic` | Explanation provider: `deterministic` or `ollama` |
-| `TERRAFORMINATOR_LLM_MODEL` | `qwen3:4b` | Model used by Ollama |
-| `TERRAFORMINATOR_LLM_TIMEOUT` | `60` | Ollama HTTP request timeout in seconds; must be a positive integer |
-| `TERRAFORMINATOR_OLLAMA_URL` | `http://localhost:11434` | Ollama base URL; must use HTTP or HTTPS |
+| `PLANGATE_LLM_PROVIDER` | `deterministic` | Explanation provider: `deterministic` or `ollama` |
+| `PLANGATE_LLM_MODEL` | `qwen3:4b` | Model used by Ollama |
+| `PLANGATE_LLM_TIMEOUT` | `60` | Ollama HTTP request timeout in seconds; must be a positive integer |
+| `PLANGATE_OLLAMA_URL` | `http://localhost:11434` | Ollama base URL; must use HTTP or HTTPS |
 
 To use a locally running Ollama instance, start Ollama and ensure the configured
 model is available, then run:
 
 ```bash
-TERRAFORMINATOR_LLM_PROVIDER=ollama \
-TERRAFORMINATOR_LLM_MODEL=qwen3:4b \
-TERRAFORMINATOR_LLM_TIMEOUT=60 \
-TERRAFORMINATOR_OLLAMA_URL=http://localhost:11434 \
-uv run terraforminator
+PLANGATE_LLM_PROVIDER=ollama \
+PLANGATE_LLM_MODEL=qwen3:4b \
+PLANGATE_LLM_TIMEOUT=60 \
+PLANGATE_OLLAMA_URL=http://localhost:11434 \
+uv run plangate
 ```
 
 The model, timeout, and URL configure the Ollama provider; deterministic
@@ -270,8 +270,6 @@ the error and falls back to a deterministic explanation of the same policy resul
 Surrounding whitespace is trimmed from provider and model names; empty or
 whitespace-only names are rejected. Invalid timeouts and URLs are rejected
 when settings are loaded.
-The setting was renamed from `TERRAFORMINATOR_EXPLANATION_PROVIDER`; update any
-existing environment configuration to use the new name.
 
 ### Structured logging
 
@@ -299,11 +297,11 @@ curl --fail-with-body -sS http://127.0.0.1:8000/metrics
 
 | Metric | Type | Label | Values |
 | --- | --- | --- | --- |
-| `terraforminator_reviews_total` | Counter | `policy_result` | `approve`, `needs_review`, `block` |
-| `terraforminator_policy_findings_total` | Counter | `policy_id`, `severity` | Policy IDs listed above; severity `low`, `medium`, or `high` |
-| `terraforminator_approval_submissions_total` | Counter | `requested_status` | `approved`, `rejected` |
-| `terraforminator_review_duration_seconds` | Histogram | `policy_result` | `approve`, `needs_review`, `block` |
-| `terraforminator_explanation_duration_seconds` | Histogram | `provider_name` | `deterministic` for the current provider |
+| `plangate_reviews_total` | Counter | `policy_result` | `approve`, `needs_review`, `block` |
+| `plangate_policy_findings_total` | Counter | `policy_id`, `severity` | Policy IDs listed above; severity `low`, `medium`, or `high` |
+| `plangate_approval_submissions_total` | Counter | `requested_status` | `approved`, `rejected` |
+| `plangate_review_duration_seconds` | Histogram | `policy_result` | `approve`, `needs_review`, `block` |
+| `plangate_explanation_duration_seconds` | Histogram | `provider_name` | `deterministic` for the current provider |
 
 The review counter increments after storage, explanation, and workflow startup
 succeed. The approval-submission counter increments after Temporal accepts the
@@ -409,8 +407,8 @@ The Temporal server must be available when the API starts. The worker must be
 running to execute approval activities. Docker Compose starts both services;
 for direct host execution, use the separate-terminal instructions under
 "Run locally". Configure the API and worker with the same
-`TERRAFORMINATOR_TEMPORAL_ADDRESS` (default `localhost:7233`) and SQLite database
-file via `TERRAFORMINATOR_DB_PATH`.
+`PLANGATE_TEMPORAL_ADDRESS` (default `localhost:7233`) and SQLite database
+file via `PLANGATE_DB_PATH`.
 
 ### Retrieve the audit record
 
@@ -438,7 +436,7 @@ is safe to retry; a different record cannot overwrite the persisted decision.
 The composite action at
 [`.github/actions/submit-plan/action.yml`](.github/actions/submit-plan/action.yml)
 reads a plan JSON file, wraps it in the API request body, and calls
-`POST /reviews` on an existing Terraforminator instance.
+`POST /reviews` on an existing PlanGate instance.
 
 | Input | Description |
 | --- | --- |
@@ -448,7 +446,7 @@ reads a plan JSON file, wraps it in the API request body, and calls
 | Output | Description |
 | --- | --- |
 | `review_id` | Created review's ID, used by the approval check |
-| `plan_hash` | SHA-256 hash of the parsed plan serialized as canonical JSON by Terraforminator |
+| `plan_hash` | SHA-256 hash of the parsed plan serialized as canonical JSON by PlanGate |
 
 Check out the repository before calling the local action. This example assumes
 the API is running on the same runner, as in the integration workflow:
@@ -475,7 +473,7 @@ must still be persisted before checking deployment eligibility.
 
 The composite action at
 [`.github/actions/check-approval/action.yml`](.github/actions/check-approval/action.yml)
-calls `GET /reviews/{review_id}` on an existing Terraforminator instance. It
+calls `GET /reviews/{review_id}` on an existing PlanGate instance. It
 succeeds only when the response contains the boolean `can_deploy: true`.
 Pending approval, rejection, and a deterministic policy block fail the step.
 Connection errors, HTTP errors, missing `can_deploy`, and invalid or empty JSON
@@ -513,7 +511,7 @@ and an existing review ID. It checks approval only; it has no deployment step.
 
 The runner needs Bash, `curl`, `jq`, and network access to the API. The demo
 uses `ubuntu-latest`: `127.0.0.1` there refers to the GitHub-hosted runner,
-not your laptop. To check a company-hosted Terraforminator instance, use an
+not your laptop. To check a company-hosted PlanGate instance, use an
 API address reachable from the chosen runner. An API on a private network
 requires a runner with access to that network. The action does not establish
 network connectivity or configure API authentication.
@@ -546,7 +544,7 @@ Each case:
    gate result fails the job.
 
 The workflow uses the runner's own API and database, needs no externally hosted
-Terraforminator instance, and does not deploy infrastructure.
+PlanGate instance, and does not deploy infrastructure.
 Simulated approval belongs only to this test; normal
 deployment reviews still require a human decision. The separate demo workflow
 above checks an existing instance and review supplied by the caller.

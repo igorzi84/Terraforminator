@@ -1,8 +1,8 @@
-# Terraforminator Agent Guide
+# PlanGate Agent Guide
 
 ## Project Purpose
 
-Terraforminator is a public portfolio project for reviewing infrastructure changes before deployment.
+PlanGate is a public portfolio project for reviewing infrastructure changes before deployment.
 
 It accepts Terraform or OpenTofu plan JSON, normalizes resource changes, runs deterministic policy checks, provides an AI-assisted explanation, and manages a human approval workflow.
 
@@ -46,7 +46,7 @@ The user has AWS promotional credits. Treat them as a limited demonstration budg
 
 - Before any AWS deployment, require MFA, a cost budget with email alerts, and resource tags.
 - Limit the first demo to S3, a least-privilege IAM policy or role, and a CloudWatch log group.
-- Every demo resource must include `Project=Terraforminator`, `Environment=demo`, `Owner=Igor`, and `ExpiresAt=YYYY-MM-DD` tags.
+- Every demo resource must include `Project=PlanGate`, `Environment=demo`, `Owner=Igor`, and `ExpiresAt=YYYY-MM-DD` tags.
 - Avoid NAT Gateways, EKS, RDS, load balancers, always-on EC2, OpenSearch, ElastiCache, and managed model APIs unless the user explicitly approves their cost and need.
 - Provide and verify a `destroy` path after every AWS demo.
 

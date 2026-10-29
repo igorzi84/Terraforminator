@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 
-from terraforminator.logging_config import JsonFormatter
+from plangate.logging_config import JsonFormatter
 
 
 def test_formatter_includes_review_fields():
@@ -12,7 +12,7 @@ def test_formatter_includes_review_fields():
         "policy_result": "approve",
         "approval_outcome": "approved",
     }
-    logger = logging.getLogger("terraforminator.test")
+    logger = logging.getLogger("plangate.test")
     record = logger.makeRecord(
         name=logger.name,
         level=logging.INFO,
@@ -34,7 +34,7 @@ def test_formatter_includes_review_fields():
 
 
 def test_formatter_does_not_include_non_existing_fields():
-    logger = logging.getLogger("terraforminator.test")
+    logger = logging.getLogger("plangate.test")
     record = logger.makeRecord(
         name=logger.name,
         level=logging.INFO,
@@ -51,7 +51,7 @@ def test_formatter_does_not_include_non_existing_fields():
 
 
 def test_formatter_includes_exception():
-    logger = logging.getLogger("terraforminator.test")
+    logger = logging.getLogger("plangate.test")
 
     try:
         raise ValueError("sample failure")

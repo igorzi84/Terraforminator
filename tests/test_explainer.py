@@ -1,5 +1,5 @@
-from terraforminator.domain.explainer import explain_review
-from terraforminator.domain.models import Finding, ReviewResult
+from plangate.domain.explainer import explain_review
+from plangate.domain.models import Finding, ReviewResult
 
 
 def test_blocked_review():

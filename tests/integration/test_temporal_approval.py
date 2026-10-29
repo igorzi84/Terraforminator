@@ -14,22 +14,22 @@ from temporalio.worker.workflow_sandbox import (
     SandboxRestrictions,
 )
 
-from terraforminator.config import AppSettings
-from terraforminator.domain.models import (
+from plangate.config import AppSettings
+from plangate.domain.models import (
     ApprovalRecord,
     PolicyConfig,
     Review,
     ReviewResult,
 )
-from terraforminator.explanation_providers.deterministic import (
+from plangate.explanation_providers.deterministic import (
     DeterministicExplanationProvider,
 )
-from terraforminator.main import create_app
-from terraforminator.sqlite_review_store import SQLiteReviewStore
-from terraforminator.temporal.activities.approval import ApprovalActivities
-from terraforminator.temporal.workflow_starter import TemporalApprovalWorkflowStarter
-from terraforminator.temporal.workflows.approval import ApprovalWorkflow
-from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
+from plangate.main import create_app
+from plangate.sqlite_review_store import SQLiteReviewStore
+from plangate.temporal.activities.approval import ApprovalActivities
+from plangate.temporal.workflow_starter import TemporalApprovalWorkflowStarter
+from plangate.temporal.workflows.approval import ApprovalWorkflow
+from plangate.temporal.workflows.models import ApprovalWorkflowInput
 
 
 @pytest.mark.parametrize(
@@ -56,7 +56,7 @@ def test_temporal_approval(
             with ThreadPoolExecutor(max_workers=2) as executor:
                 async with Worker(
                     env.client,
-                    task_queue="terraforminator-approval",
+                    task_queue="plangate-approval",
                     workflows=[ApprovalWorkflow],
                     activities=[activities.save_approval],
                     activity_executor=executor,
@@ -166,7 +166,7 @@ def test_temporal_approval_retries_after_database_commit(tmp_path, monkeypatch):
             with ThreadPoolExecutor(max_workers=2) as executor:
                 async with Worker(
                     env.client,
-                    task_queue="terraforminator-approval",
+                    task_queue="plangate-approval",
                     workflows=[ApprovalWorkflow],
                     activities=[activities.save_approval],
                     activity_executor=executor,

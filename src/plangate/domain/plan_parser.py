@@ -1,5 +1,5 @@
-from terraforminator.domain.errors import InvalidPlanError
-from terraforminator.domain.models import ResourceChange
+from plangate.domain.errors import InvalidPlanError
+from plangate.domain.models import ResourceChange
 
 
 def parse_plan(plan: dict) -> list[ResourceChange]:

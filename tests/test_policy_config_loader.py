@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from terraforminator.config import load_policy_config
-from terraforminator.domain.models import PolicyConfig
-from terraforminator.domain.policies import evaluate_policies
+from plangate.config import load_policy_config
+from plangate.domain.models import PolicyConfig
+from plangate.domain.policies import evaluate_policies
 
 TEST_CONFIG_DIR = Path(__file__).parent / "fixtures" / "config"
 REPO_CONFIG_DIR = Path(__file__).parent.parent / "config"

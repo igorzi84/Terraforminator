@@ -1,4 +1,4 @@
-from terraforminator.metrics import ReviewMetrics
+from plangate.metrics import ReviewMetrics
 
 
 def test_record_review():
@@ -7,7 +7,7 @@ def test_record_review():
     metrics.record_review("approve")
     assert (
         metrics.registry.get_sample_value(
-            "terraforminator_reviews_total",
+            "plangate_reviews_total",
             {"policy_result": "approve"},
         )
         == 2
@@ -24,7 +24,7 @@ def test_metrics_are_isolated():
 
     assert (
         first_metrics.registry.get_sample_value(
-            "terraforminator_reviews_total",
+            "plangate_reviews_total",
             {"policy_result": "approve"},
         )
         == 2
@@ -32,7 +32,7 @@ def test_metrics_are_isolated():
 
     assert (
         second_metrics.registry.get_sample_value(
-            "terraforminator_reviews_total",
+            "plangate_reviews_total",
             {"policy_result": "approve"},
         )
         == 1
@@ -45,7 +45,7 @@ def test_record_review_duration():
 
     assert (
         metrics.registry.get_sample_value(
-            "terraforminator_review_duration_seconds_count",
+            "plangate_review_duration_seconds_count",
             {"policy_result": "approve"},
         )
         == 1
@@ -53,7 +53,7 @@ def test_record_review_duration():
 
     assert (
         metrics.registry.get_sample_value(
-            "terraforminator_review_duration_seconds_sum", {"policy_result": "approve"}
+            "plangate_review_duration_seconds_sum", {"policy_result": "approve"}
         )
         == 0.25
     )
@@ -65,7 +65,7 @@ def test_record_explanation_duration():
 
     assert (
         metrics.registry.get_sample_value(
-            "terraforminator_explanation_duration_seconds_count",
+            "plangate_explanation_duration_seconds_count",
             {"provider_name": "chatGPT"},
         )
         == 1
@@ -73,7 +73,7 @@ def test_record_explanation_duration():
 
     assert (
         metrics.registry.get_sample_value(
-            "terraforminator_explanation_duration_seconds_sum", {"provider_name": "chatGPT"}
+            "plangate_explanation_duration_seconds_sum", {"provider_name": "chatGPT"}
         )
         == 0.25
     )

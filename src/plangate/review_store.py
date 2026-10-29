@@ -1,7 +1,7 @@
 from typing import Protocol
 from uuid import UUID
 
-from terraforminator.domain.models import ApprovalRecord, Review
+from plangate.domain.models import ApprovalRecord, Review
 
 
 class ReviewStore(Protocol):

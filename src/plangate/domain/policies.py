@@ -1,6 +1,6 @@
 import json
 
-from terraforminator.domain.models import Finding, PolicyConfig, ResourceChange
+from plangate.domain.models import Finding, PolicyConfig, ResourceChange
 
 
 def evaluate_policies(
