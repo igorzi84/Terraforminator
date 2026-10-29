@@ -1,6 +1,6 @@
-from terraforminator.domain.models import Finding, PolicyConfig
-from terraforminator.domain.plan_parser import parse_plan
-from terraforminator.domain.review import evaluate_review
+from plangate.domain.models import Finding, PolicyConfig
+from plangate.domain.plan_parser import parse_plan
+from plangate.domain.review import evaluate_review
 
 
 def test_review_pipeline(aws_sg_update_plan):

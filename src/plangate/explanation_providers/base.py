@@ -1,6 +1,6 @@
 from typing import Protocol
 
-from terraforminator.domain.models import ReviewResult
+from plangate.domain.models import ReviewResult
 
 
 class ExplanationProvider(Protocol):

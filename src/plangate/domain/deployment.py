@@ -1,4 +1,4 @@
-from terraforminator.domain.models import Review
+from plangate.domain.models import Review
 
 
 def can_deploy(review: Review) -> bool:

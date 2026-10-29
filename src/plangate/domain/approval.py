@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from terraforminator.domain.models import (
+from plangate.domain.models import (
     ApprovalDecision,
     ApprovalRecord,
     ApprovalStatus,

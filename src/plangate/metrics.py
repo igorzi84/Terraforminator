@@ -1,6 +1,6 @@
 from prometheus_client import CollectorRegistry, Counter, Histogram
 
-from terraforminator.domain.models import ApprovalDecision, Finding, ReviewDecision
+from plangate.domain.models import ApprovalDecision, Finding, ReviewDecision
 
 
 class ReviewMetrics:
@@ -8,42 +8,42 @@ class ReviewMetrics:
         self.registry = CollectorRegistry()
 
         self.reviews_total = Counter(
-            "terraforminator_reviews_total",
+            "plangate_reviews_total",
             "Total successfully completed reviews",
             labelnames=("policy_result",),
             registry=self.registry,
         )
 
         self.approvals_total = Counter(
-            "terraforminator_approval_submissions_total",
+            "plangate_approval_submissions_total",
             "Total approval submissions",
             labelnames=("requested_status",),
             registry=self.registry,
         )
 
         self.review_duration = Histogram(
-            "terraforminator_review_duration_seconds",
+            "plangate_review_duration_seconds",
             "Review duration",
             labelnames=("policy_result",),
             registry=self.registry,
         )
 
         self.explanation_duration = Histogram(
-            "terraforminator_explanation_duration_seconds",
+            "plangate_explanation_duration_seconds",
             "AI explanation duration",
             labelnames=("provider_name",),
             registry=self.registry,
         )
 
         self.policy_findings_total = Counter(
-            "terraforminator_policy_findings_total",
+            "plangate_policy_findings_total",
             "Total policy findings",
             labelnames=("policy_id", "severity"),
             registry=self.registry,
         )
 
         self.explanation_fallbacks_total = Counter(
-            "terraforminator_explanation_fallbacks_total",
+            "plangate_explanation_fallbacks_total",
             "Total fallback events per provider",
             labelnames=("provider_name",),
             registry=self.registry,

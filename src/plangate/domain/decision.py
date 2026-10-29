@@ -1,4 +1,4 @@
-from terraforminator.domain.models import Finding, ReviewDecision
+from plangate.domain.models import Finding, ReviewDecision
 
 
 def decide_review(findings: list[Finding]) -> ReviewDecision:

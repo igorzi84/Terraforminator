@@ -2,8 +2,8 @@ from uuid import uuid4
 
 import pytest
 
-from terraforminator.domain.deployment import can_deploy
-from terraforminator.domain.models import Review, ReviewResult
+from plangate.domain.deployment import can_deploy
+from plangate.domain.models import Review, ReviewResult
 
 
 @pytest.mark.parametrize(

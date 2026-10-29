@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from terraforminator.domain.models import PolicyConfig, ResourceChange
-from terraforminator.domain.policies import evaluate_policies
+from plangate.domain.models import PolicyConfig, ResourceChange
+from plangate.domain.policies import evaluate_policies
 
 STORAGE_ENCRYPTION_ONLY = PolicyConfig(
     enabled_policy_ids=frozenset({"storage-encryption"})
@@ -96,7 +96,7 @@ def test_evaluate_policies_iam_no_wildcard():
         after={
             "name": "app-policy",
             "path": "/",
-            "policy": '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"arn:aws:s3:::terraforminator-demo/*"}]}',
+            "policy": '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"arn:aws:s3:::plangate-demo/*"}]}',
             "tags": None,
         },
     )
@@ -107,9 +107,9 @@ def test_evaluate_policies_iam_no_wildcard():
     ("action", "resource"),
     [
         ("*", "*"),
-        ("*", "arn:aws:s3:::terraforminator-demo/*"),
+        ("*", "arn:aws:s3:::plangate-demo/*"),
         ("s3:GetObject", "*"),
-        (["*"], "arn:aws:s3:::terraforminator-demo/*"),
+        (["*"], "arn:aws:s3:::plangate-demo/*"),
         ("s3:GetObject", ["*"]),
     ],
 )

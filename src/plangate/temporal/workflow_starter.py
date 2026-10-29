@@ -2,9 +2,9 @@ from typing import Protocol
 
 from temporalio.client import Client
 
-from terraforminator.domain.models import ApprovalRecord
-from terraforminator.temporal.workflows.approval import ApprovalWorkflow
-from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
+from plangate.domain.models import ApprovalRecord
+from plangate.temporal.workflows.approval import ApprovalWorkflow
+from plangate.temporal.workflows.models import ApprovalWorkflowInput
 
 
 class ApprovalWorkflowStarter(Protocol):
@@ -22,7 +22,7 @@ class TemporalApprovalWorkflowStarter:
             ApprovalWorkflow.run,
             input,
             id=f"approval-{input.review_id}",
-            task_queue="terraforminator-approval",
+            task_queue="plangate-approval",
         )
         return handle.id
 

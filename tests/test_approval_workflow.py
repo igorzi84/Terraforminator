@@ -5,8 +5,8 @@ from uuid import uuid4
 import pytest
 from temporalio.contrib.pydantic import pydantic_data_converter
 
-from terraforminator.domain.models import ApprovalRecord
-from terraforminator.temporal.workflows.approval import ApprovalWorkflow
+from plangate.domain.models import ApprovalRecord
+from plangate.temporal.workflows.approval import ApprovalWorkflow
 
 
 @pytest.mark.parametrize("first_status", ["approved", "rejected"])

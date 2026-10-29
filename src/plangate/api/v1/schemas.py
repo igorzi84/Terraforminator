@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, field_validator
 
-from terraforminator.domain.models import ApprovalStatus, ReviewDecision, Severity
+from plangate.domain.models import ApprovalStatus, ReviewDecision, Severity
 
 
 class FindingResponse(BaseModel):

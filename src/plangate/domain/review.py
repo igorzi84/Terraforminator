@@ -1,6 +1,6 @@
-from terraforminator.domain.decision import decide_review
-from terraforminator.domain.models import PolicyConfig, ReviewResult
-from terraforminator.domain.policies import evaluate_policies
+from plangate.domain.decision import decide_review
+from plangate.domain.models import PolicyConfig, ReviewResult
+from plangate.domain.policies import evaluate_policies
 
 
 def evaluate_review(changes, policy_config: PolicyConfig | None = None) -> ReviewResult:

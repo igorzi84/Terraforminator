@@ -1,5 +1,5 @@
 name: Submit plan
-description: Submits terraform plan to Terraforminator
+description: Submits terraform plan to PlanGate
 
 inputs:
   api_url:

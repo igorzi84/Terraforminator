@@ -1,5 +1,5 @@
-from terraforminator.domain.explainer import explain_review
-from terraforminator.domain.models import ReviewResult
+from plangate.domain.explainer import explain_review
+from plangate.domain.models import ReviewResult
 
 
 class DeterministicExplanationProvider:

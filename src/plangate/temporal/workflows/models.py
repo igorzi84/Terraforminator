@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from terraforminator.domain.models import ReviewDecision
+from plangate.domain.models import ReviewDecision
 
 
 @dataclass(frozen=True)

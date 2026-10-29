@@ -30,7 +30,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging() -> None:
-    logger = logging.getLogger("terraforminator")
+    logger = logging.getLogger("plangate")
     if logger.handlers:
         return
 

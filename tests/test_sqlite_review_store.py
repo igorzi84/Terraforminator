@@ -4,8 +4,8 @@ from uuid import uuid4
 
 import pytest
 
-from terraforminator.domain.models import ApprovalRecord, Finding, Review, ReviewResult
-from terraforminator.sqlite_review_store import SQLiteReviewStore
+from plangate.domain.models import ApprovalRecord, Finding, Review, ReviewResult
+from plangate.sqlite_review_store import SQLiteReviewStore
 
 
 @pytest.fixture

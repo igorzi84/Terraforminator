@@ -1,4 +1,4 @@
-name: Check Terraforminator approval
+name: Check PlanGate approval
 description: Fail unless a review allows deployment
 
 inputs:

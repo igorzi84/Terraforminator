@@ -1,4 +1,4 @@
-from terraforminator.domain.plan_hash import hash_plan
+from plangate.domain.plan_hash import hash_plan
 
 
 def test_identical_content():

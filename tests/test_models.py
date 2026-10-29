@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from terraforminator.domain.models import (
+from plangate.domain.models import (
     ApprovalRecord,
     Finding,
     PolicyConfig,

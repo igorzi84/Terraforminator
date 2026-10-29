@@ -1,7 +1,7 @@
 import httpx2
 
-from terraforminator.config import AppSettings
-from terraforminator.domain.models import ReviewResult
+from plangate.config import AppSettings
+from plangate.domain.models import ReviewResult
 
 
 class OllamaExplanationProvider:

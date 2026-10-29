@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from terraforminator.config import load_policy_config
-from terraforminator.domain.models import ResourceChange
-from terraforminator.domain.policies import evaluate_policies
+from plangate.config import load_policy_config
+from plangate.domain.models import ResourceChange
+from plangate.domain.policies import evaluate_policies
 
 CONFIG_DIR = Path(__file__).parent / "fixtures" / "config"
 

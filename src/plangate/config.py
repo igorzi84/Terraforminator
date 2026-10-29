@@ -5,17 +5,17 @@ from typing import Any
 from pydantic import AnyUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from terraforminator.domain.models import PolicyConfig
+from plangate.domain.models import PolicyConfig
 
 ROOT_DIR = Path(__file__).parent.parent.parent
 
 
 class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_prefix="TERRAFORMINATOR_",
+        env_prefix="PLANGATE_",
         str_strip_whitespace=True,
     )
-    db_path: Path = Field(default=ROOT_DIR / "terraforminator.db")
+    db_path: Path = Field(default=ROOT_DIR / "plangate.db")
     host: str = Field(default="127.0.0.1", min_length=1)
     temporal_address: str = Field(default="localhost:7233", min_length=1)
 
@@ -31,7 +31,7 @@ class AppSettings(BaseSettings):
         if isinstance(value, str):
             value = value.strip()
             if not value:
-                raise ValueError("TERRAFORMINATOR_DB_PATH must not be blank")
+                raise ValueError("PLANGATE_DB_PATH must not be blank")
         return value
 
     @field_validator("temporal_address", mode="before")
@@ -39,13 +39,13 @@ class AppSettings(BaseSettings):
     def validate_temporal_address(cls, value: Any) -> str:
         if not isinstance(value, str):
             raise TypeError(
-                "TERRAFORMINATOR_TEMPORAL_ADDRESS must be a valid host:port"
+                "PLANGATE_TEMPORAL_ADDRESS must be a valid host:port"
             )
 
         host, separator, port = value.rpartition(":")
         if not host or not separator or not port:
             raise ValueError(
-                "TERRAFORMINATOR_TEMPORAL_ADDRESS must be a valid host:port"
+                "PLANGATE_TEMPORAL_ADDRESS must be a valid host:port"
             )
 
         try:

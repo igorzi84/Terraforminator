@@ -10,22 +10,22 @@ from fastapi.testclient import TestClient
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import ActivityEnvironment
 
-from terraforminator.config import AppSettings
-from terraforminator.domain.models import (
+from plangate.config import AppSettings
+from plangate.domain.models import (
     ApprovalRecord,
     PolicyConfig,
     ReviewResult,
 )
-from terraforminator.domain.plan_hash import hash_plan
-from terraforminator.explanation_providers.deterministic import (
+from plangate.domain.plan_hash import hash_plan
+from plangate.explanation_providers.deterministic import (
     DeterministicExplanationProvider,
 )
-from terraforminator.explanation_providers.ollama import OllamaExplanationProvider
-from terraforminator.main import create_app, create_explanation_provider
-from terraforminator.review_store import InMemoryReviewStore
-from terraforminator.sqlite_review_store import SQLiteReviewStore
-from terraforminator.temporal.activities.approval import ApprovalActivities
-from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
+from plangate.explanation_providers.ollama import OllamaExplanationProvider
+from plangate.main import create_app, create_explanation_provider
+from plangate.review_store import InMemoryReviewStore
+from plangate.sqlite_review_store import SQLiteReviewStore
+from plangate.temporal.activities.approval import ApprovalActivities
+from plangate.temporal.workflows.models import ApprovalWorkflowInput
 
 
 class FakeExplanationProvider:
@@ -105,7 +105,7 @@ def test_lifespan_reuses_temporal_client(monkeypatch, create_plan):
     temporal_client = Mock()
     temporal_client.start_workflow = AsyncMock(return_value=Mock(id="workflow_id"))
     connect = AsyncMock(return_value=temporal_client)
-    monkeypatch.setattr("terraforminator.main.Client.connect", connect)
+    monkeypatch.setattr("plangate.main.Client.connect", connect)
     test_app = create_app(
         PolicyConfig(), FakeExplanationProvider(), settings=TEST_SETTINGS
     )
@@ -134,7 +134,7 @@ def test_lifespan_reuses_temporal_client(monkeypatch, create_plan):
 
 def test_lifespan_uses_injected_starter(monkeypatch, create_plan):
     connect = AsyncMock(side_effect=AssertionError("Unexpected Temporal connection"))
-    monkeypatch.setattr("terraforminator.main.Client.connect", connect)
+    monkeypatch.setattr("plangate.main.Client.connect", connect)
     starter = FakeApprovalWorkflowStarter()
     test_app = create_app(
         PolicyConfig(),
@@ -158,7 +158,7 @@ def test_lifespan_uses_injected_starter(monkeypatch, create_plan):
 
 def test_lifespan_connection_failure_prevents_startup(monkeypatch):
     connect = AsyncMock(side_effect=RuntimeError("Temporal unavailable"))
-    monkeypatch.setattr("terraforminator.main.Client.connect", connect)
+    monkeypatch.setattr("plangate.main.Client.connect", connect)
     test_app = create_app(
         PolicyConfig(), FakeExplanationProvider(), settings=TEST_SETTINGS
     )
@@ -705,7 +705,7 @@ def test_explanation_provider_failure_uses_fallback(aws_sg_update_plan, caplog):
     )
     custom_client = TestClient(custom_app)
 
-    logger = logging.getLogger("terraforminator")
+    logger = logging.getLogger("plangate")
     logger.addHandler(caplog.handler)
     try:
         response = custom_client.post("/reviews", json={"plan": aws_sg_update_plan})
@@ -748,7 +748,7 @@ def test_explanation_provider_failure_uses_fallback(aws_sg_update_plan, caplog):
 
     assert (
         custom_app.state.metrics.registry.get_sample_value(
-            "terraforminator_explanation_fallbacks_total",
+            "plangate_explanation_fallbacks_total",
             {"provider_name": "bad provider"},
         )
         == 1
@@ -757,7 +757,7 @@ def test_explanation_provider_failure_uses_fallback(aws_sg_update_plan, caplog):
     # A completed review with a fallback still counts as successful.
     assert (
         custom_app.state.metrics.registry.get_sample_value(
-            "terraforminator_reviews_total",
+            "plangate_reviews_total",
             {"policy_result": "block"},
         )
         == 1
@@ -765,7 +765,7 @@ def test_explanation_provider_failure_uses_fallback(aws_sg_update_plan, caplog):
 
     assert (
         custom_app.state.metrics.registry.get_sample_value(
-            "terraforminator_review_duration_seconds_count",
+            "plangate_review_duration_seconds_count",
             {"policy_result": "block"},
         )
         == 1
@@ -773,14 +773,14 @@ def test_explanation_provider_failure_uses_fallback(aws_sg_update_plan, caplog):
 
     assert (
         custom_app.state.metrics.registry.get_sample_value(
-            "terraforminator_explanation_duration_seconds_count",
+            "plangate_explanation_duration_seconds_count",
             {"provider_name": "bad provider"},
         )
         is None
     )
     assert (
         custom_app.state.metrics.registry.get_sample_value(
-            "terraforminator_explanation_duration_seconds_count",
+            "plangate_explanation_duration_seconds_count",
             {"provider_name": "deterministic"},
         )
         == 1
@@ -802,7 +802,7 @@ def test_reviews_metric(create_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_reviews_total",
+            "plangate_reviews_total",
             {"policy_result": "approve"},
         )
         == 1
@@ -810,7 +810,7 @@ def test_reviews_metric(create_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_review_duration_seconds_count",
+            "plangate_review_duration_seconds_count",
             {"policy_result": "approve"},
         )
         == 1
@@ -818,7 +818,7 @@ def test_reviews_metric(create_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_explanation_duration_seconds_count",
+            "plangate_explanation_duration_seconds_count",
             {"provider_name": "fake provider"},
         )
         == 1
@@ -840,7 +840,7 @@ def test_get_metrics(create_plan):
     metrics = test_client.get("/metrics")
     assert metrics.status_code == 200
     assert metrics.headers["content-type"] == prometheus_client.CONTENT_TYPE_LATEST
-    assert 'terraforminator_reviews_total{policy_result="approve"} 1.0' in metrics.text
+    assert 'plangate_reviews_total{policy_result="approve"} 1.0' in metrics.text
 
 
 def test_approval_metric(create_plan, aws_sg_update_plan):
@@ -879,7 +879,7 @@ def test_approval_metric(create_plan, aws_sg_update_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_approval_submissions_total",
+            "plangate_approval_submissions_total",
             {"requested_status": "approved"},
         )
         == 1
@@ -887,7 +887,7 @@ def test_approval_metric(create_plan, aws_sg_update_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_approval_submissions_total",
+            "plangate_approval_submissions_total",
             {"requested_status": "rejected"},
         )
         == 1
@@ -905,7 +905,7 @@ def test_record_findings(aws_sg_update_plan):
     test_client.post("/reviews", json={"plan": aws_sg_update_plan})
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_policy_findings_total",
+            "plangate_policy_findings_total",
             {"policy_id": "public-inbound-access", "severity": "high"},
         )
         == 1
@@ -925,7 +925,7 @@ def test_record_findings_absent_on_workflow_error(aws_sg_update_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_policy_findings_total",
+            "plangate_policy_findings_total",
             {"policy_id": "public-inbound-access", "severity": "high"},
         )
         is None
@@ -970,7 +970,7 @@ def test_bad_approval_workflow_starter(aws_sg_update_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_policy_findings_total",
+            "plangate_policy_findings_total",
             {"policy_id": "public-inbound-access", "severity": "high"},
         )
         is None
@@ -978,7 +978,7 @@ def test_bad_approval_workflow_starter(aws_sg_update_plan):
 
     assert (
         test_app.state.metrics.registry.get_sample_value(
-            "terraforminator_reviews_total",
+            "plangate_reviews_total",
             {"policy_result": "block"},
         )
         is None

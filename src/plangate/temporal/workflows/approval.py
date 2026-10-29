@@ -2,9 +2,9 @@ from datetime import timedelta
 
 from temporalio import workflow
 
-from terraforminator.domain.models import ApprovalDecision, ApprovalRecord
-from terraforminator.temporal.activities.approval import ApprovalActivities
-from terraforminator.temporal.workflows.models import ApprovalWorkflowInput
+from plangate.domain.models import ApprovalDecision, ApprovalRecord
+from plangate.temporal.activities.approval import ApprovalActivities
+from plangate.temporal.workflows.models import ApprovalWorkflowInput
 
 
 @workflow.defn

@@ -3,9 +3,9 @@ from unittest.mock import Mock
 import pytest
 from pydantic import AnyUrl
 
-from terraforminator.config import AppSettings
-from terraforminator.domain.models import ReviewResult
-from terraforminator.explanation_providers import ollama
+from plangate.config import AppSettings
+from plangate.domain.models import ReviewResult
+from plangate.explanation_providers import ollama
 
 TEST_SETTINGS = AppSettings(
     llm_provider="ollama",
