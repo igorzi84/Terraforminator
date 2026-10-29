@@ -68,15 +68,15 @@ def to_stored_review_response(review: Review) -> StoredReviewResponse:
     )
 
 
-def create_explanation_provider(provider_name: str) -> ExplanationProvider:
+def create_explanation_provider(settings: AppSettings) -> ExplanationProvider:
     map = {
         "deterministic": DeterministicExplanationProvider(),
-        "ollama": OllamaExplanationProvider(),
+        "ollama": OllamaExplanationProvider(settings),
     }
     try:
-        provider = map[provider_name]
+        provider = map[settings.llm_provider]
     except KeyError:
-        raise ValueError(f"{provider_name} is unsupported value.")
+        raise ValueError(f"{settings.llm_provider} is unsupported value.")
     return provider
 
 
@@ -278,11 +278,11 @@ def main() -> None:
     configure_logging()
     policy_config = load_policy_config(POLICY_CONFIG_PATH)
     settings = load_app_settings()
-    review_store = SQLiteReviewStore(settings.database_path)
+    review_store = SQLiteReviewStore(settings.db_path)
 
     app = create_app(
         policy_config,
-        explanation_provider=create_explanation_provider(settings.explanation_provider),
+        explanation_provider=create_explanation_provider(settings),
         review_store=review_store,
         settings=settings,
     )

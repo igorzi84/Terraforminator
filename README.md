@@ -240,6 +240,39 @@ database file if it does not exist. Relative paths resolve from the directory
 where you start the server. Empty or whitespace-only values are rejected.
 Database files matching `*.db` are ignored by Git.
 
+### LLM provider configuration
+
+`TERRAFORMINATOR_LLM_PROVIDER` selects `deterministic` (the default) or `ollama`.
+Configure the provider through these environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TERRAFORMINATOR_LLM_PROVIDER` | `deterministic` | Explanation provider: `deterministic` or `ollama` |
+| `TERRAFORMINATOR_LLM_MODEL` | `qwen3:4b` | Model used by Ollama |
+| `TERRAFORMINATOR_LLM_TIMEOUT` | `60` | Ollama HTTP request timeout in seconds; must be a positive integer |
+| `TERRAFORMINATOR_OLLAMA_URL` | `http://localhost:11434` | Ollama base URL; must use HTTP or HTTPS |
+
+To use a locally running Ollama instance, start Ollama and ensure the configured
+model is available, then run:
+
+```bash
+TERRAFORMINATOR_LLM_PROVIDER=ollama \
+TERRAFORMINATOR_LLM_MODEL=qwen3:4b \
+TERRAFORMINATOR_LLM_TIMEOUT=60 \
+TERRAFORMINATOR_OLLAMA_URL=http://localhost:11434 \
+uv run terraforminator
+```
+
+The model, timeout, and URL configure the Ollama provider; deterministic
+explanations require no model service. If an Ollama request fails, the API logs
+the error and falls back to a deterministic explanation of the same policy result.
+
+Surrounding whitespace is trimmed from provider and model names; empty or
+whitespace-only names are rejected. Invalid timeouts and URLs are rejected
+when settings are loaded.
+The setting was renamed from `TERRAFORMINATOR_EXPLANATION_PROVIDER`; update any
+existing environment configuration to use the new name.
+
 ### Structured logging
 
 The API writes JSON logs to stderr in the terminal. Each event includes a UTC
