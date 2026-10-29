@@ -27,7 +27,7 @@ async def main():
         settings.temporal_address, data_converter=pydantic_data_converter
     )
 
-    review_store = SQLiteReviewStore(settings.database_path)
+    review_store = SQLiteReviewStore(settings.db_path)
     approval_activities = ApprovalActivities(review_store)
 
     with ThreadPoolExecutor(max_workers=4) as executor:

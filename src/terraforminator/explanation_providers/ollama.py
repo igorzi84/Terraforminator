@@ -1,10 +1,14 @@
 import httpx2
 
+from terraforminator.config import AppSettings
 from terraforminator.domain.models import ReviewResult
 
 
 class OllamaExplanationProvider:
     name = "ollama"
+
+    def __init__(self, settings: AppSettings) -> None:
+        self.settings = settings
 
     def explain(self, review: ReviewResult) -> str:
         prompt = self.build_prompt(review)
@@ -27,14 +31,15 @@ class OllamaExplanationProvider:
         """
 
     def ask(self, prompt: str) -> str:
+        base_url = str(self.settings.ollama_url).rstrip("/")
         response = httpx2.post(
-            "http://localhost:11434/api/generate",
+            f"{base_url}/api/generate",
             json={
-                "model": "qwen3:4b",
+                "model": self.settings.llm_model,
                 "prompt": prompt,
                 "stream": False,
             },
-            timeout=120.0,
+            timeout=self.settings.llm_timeout,
         )
         response.raise_for_status()
         return response.json()["response"]

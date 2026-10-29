@@ -793,6 +793,7 @@ dependencies = [
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx2" },
     { name = "prometheus-client" },
+    { name = "pydantic-settings" },
     { name = "temporalio" },
 ]
 
@@ -806,6 +807,7 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.141.1" },
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "prometheus-client", specifier = ">=0.26.0" },
+    { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "temporalio", specifier = ">=1.34.0" },
 ]
 

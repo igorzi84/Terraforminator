@@ -70,10 +70,12 @@ def test_temporal_approval(
                         PolicyConfig(),
                         DeterministicExplanationProvider(),
                         settings=AppSettings(
-                            database_path=tmp_path / "reviews.db",
+                            db_path=tmp_path / "reviews.db",
                             host="127.0.0.1",
                             temporal_address=env.client.service_client.config.target_host,
-                            explanation_provider="deterministic",
+                            llm_provider="deterministic",
+                            llm_model="qwen3:4b",
+                            llm_timeout=30
                         ),
                         review_store=store,
                         workflow_starter=TemporalApprovalWorkflowStarter(env.client),
@@ -129,8 +131,8 @@ def test_temporal_approval_retries_after_database_commit(tmp_path, monkeypatch):
         async with await WorkflowEnvironment.start_local(
             data_converter=pydantic_data_converter,
         ) as env:
-            database_path = tmp_path / "reviews.db"
-            store = SQLiteReviewStore(database_path)
+            db_path = tmp_path / "reviews.db"
+            store = SQLiteReviewStore(db_path)
             record = ApprovalRecord(
                 review_id=uuid4(),
                 status="approved",
@@ -187,7 +189,7 @@ def test_temporal_approval_retries_after_database_commit(tmp_path, monkeypatch):
                     assert result == "approved"
                     assert attempts == [1, 2]
                     assert persisted_records == [record, record]
-                    reopened_store = SQLiteReviewStore(database_path)
+                    reopened_store = SQLiteReviewStore(db_path)
                     assert reopened_store.get_record(record.review_id) == record
                     assert (
                         reopened_store.get_review(record.review_id).approval_status

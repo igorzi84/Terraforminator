@@ -1,58 +1,73 @@
-import os
 import tomllib
-from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+from pydantic import AnyUrl, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from terraforminator.domain.models import PolicyConfig
 
 ROOT_DIR = Path(__file__).parent.parent.parent
 
 
-@dataclass
-class AppSettings:
-    database_path: Path
-    host: str
-    temporal_address: str
-    explanation_provider: str
+class AppSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="TERRAFORMINATOR_",
+        str_strip_whitespace=True,
+    )
+    db_path: Path = Field(default=ROOT_DIR / "terraforminator.db")
+    host: str = Field(default="127.0.0.1", min_length=1)
+    temporal_address: str = Field(default="localhost:7233", min_length=1)
+
+    llm_provider: str = Field(default="deterministic", min_length=1)
+    llm_model: str = Field(default="qwen3:4b", min_length=1)
+    llm_timeout: int = Field(default=60, gt=0)
+
+    ollama_url: AnyUrl = Field(default_factory=lambda: AnyUrl("http://localhost:11434"))
+
+    @field_validator("db_path", mode="before")
+    @classmethod
+    def validate_path(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("TERRAFORMINATOR_DB_PATH must not be blank")
+        return value
+
+    @field_validator("temporal_address", mode="before")
+    @classmethod
+    def validate_temporal_address(cls, value: Any) -> str:
+        if not isinstance(value, str):
+            raise TypeError(
+                "TERRAFORMINATOR_TEMPORAL_ADDRESS must be a valid host:port"
+            )
+
+        host, separator, port = value.rpartition(":")
+        if not host or not separator or not port:
+            raise ValueError(
+                "TERRAFORMINATOR_TEMPORAL_ADDRESS must be a valid host:port"
+            )
+
+        try:
+            port_number = int(port)
+        except ValueError as error:
+            raise ValueError("Temporal port must be a number") from error
+
+        if not 1 <= port_number <= 65535:
+            raise ValueError("Temporal port must be between 1 and 65535")
+
+        return value
+
+    @field_validator("ollama_url", mode="after")
+    @classmethod
+    def require_http(cls, value: AnyUrl) -> AnyUrl:
+        if value.scheme not in {"http", "https"}:
+            raise ValueError("Ollama URL must use http or https")
+        return value
 
 
 def load_app_settings() -> AppSettings:
-    database_path = ROOT_DIR / "terraforminator.db"
-    database_path_str = os.getenv("TERRAFORMINATOR_DB_PATH")
-    if database_path_str is not None:
-        if not database_path_str.strip():
-            raise ValueError("TERRAFORMINATOR_DB_PATH must not be blank")
-        database_path = Path(database_path_str)
-
-    host = "127.0.0.1"
-    host_var = os.getenv("TERRAFORMINATOR_HOST")
-    if host_var is not None:
-        if not host_var.strip():
-            raise ValueError("TERRAFORMINATOR_HOST must not be blank")
-        host = host_var.strip()
-
-    temporal_address = "localhost:7233"
-    temporal_address_var = os.getenv("TERRAFORMINATOR_TEMPORAL_ADDRESS")
-    if temporal_address_var is not None:
-        if not temporal_address_var.strip():
-            raise ValueError("TERRAFORMINATOR_TEMPORAL_ADDRESS must not be blank")
-        temporal_address = temporal_address_var.strip()
-
-    explanation_provider = "deterministic"
-    explanation_provider_var = os.getenv("TERRAFORMINATOR_EXPLANATION_PROVIDER")
-    if explanation_provider_var is not None:
-        if not explanation_provider_var.strip():
-            raise ValueError("TERRAFORMINATOR_EXPLANATION_PROVIDER must not be blank")
-        explanation_provider = explanation_provider_var.strip()
-
-    settings = AppSettings(
-        database_path=database_path,
-        host=host,
-        temporal_address=temporal_address,
-        explanation_provider=explanation_provider,
-    )
-
-    return settings
+    return AppSettings()
 
 
 def load_policy_config(config_path: Path) -> PolicyConfig:

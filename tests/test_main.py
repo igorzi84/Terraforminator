@@ -64,10 +64,12 @@ class BadApprovalWorkflowStarter:
 
 
 TEST_SETTINGS = AppSettings(
-    database_path=Path("unused-test.db"),
+    db_path=Path("unused-test.db"),
     host="127.0.0.1",
     temporal_address="temporal.test:7233",
-    explanation_provider="deterministic"
+    llm_provider="deterministic",
+    llm_model="qwen3:4b",
+    llm_timeout=30,
 )
 
 
@@ -984,12 +986,13 @@ def test_bad_approval_workflow_starter(aws_sg_update_plan):
 
 
 def test_create_explanation_provider_unknown():
+    settings = TEST_SETTINGS.model_copy(update={"llm_provider": "unknown"})
     with pytest.raises(ValueError, match="unknown is unsupported value"):
-        create_explanation_provider("unknown")
+        create_explanation_provider(settings)
 
 
 def test_explanation_provider_fallback(monkeypatch, create_plan):
-    provider = OllamaExplanationProvider()
+    provider = OllamaExplanationProvider(TEST_SETTINGS)
     ask = Mock(side_effect=TimeoutError("Ollama unavailable"))
     monkeypatch.setattr(provider, "ask", ask)
     test_app = create_app(
